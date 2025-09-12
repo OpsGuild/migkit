@@ -25,13 +25,13 @@ services:
       postgres-test:
         condition: service_healthy
     environment:
-      # Legacy environment variables (for backward compatibility)
       LIQ_DB_HOST: postgres-test
       LIQ_DB_USER: testuser
       LIQ_DB_PASSWORD: testpass
       LIQ_DB_NAME: testdb
       LIQ_DB_SNAPSHOT: testdb_tmp
       CHANGELOG_FORMAT: sql
+      SCHEMA_SCRIPTS: /liquibase/schema/00-init-db.sql,/liquibase/schema/01-init-data.sql,/liquibase/schema/02-triggers.sql 
       # Liquibase standard environment variables
       LIQUIBASE_DEFAULTS_FILE: /liquibase/liquibase.properties
       LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres-test:5432/testdb

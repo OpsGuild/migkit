@@ -410,9 +410,11 @@ def process_changelog(filename):
                 ):
                     break
 
-                if re.match(r"^\s*--\s+rollback", next_line):
+                if re.match(r"^\s*--\s*rollback", next_line):
                     has_rollback = True
-                    output_lines.append(next_line)
+                    # Skip duplicate rollback statements
+                    if not any("rollback" in line for line in output_lines[-5:]):
+                        output_lines.append(next_line)
                     j += 1
                     continue
 
@@ -425,7 +427,7 @@ def process_changelog(filename):
             if sql_lines and not has_rollback:
                 sql = " ".join(sql_lines)
                 rollback_sql = generate_rollback(sql)
-                output_lines.append(f"--rollback {rollback_sql}\n")
+                output_lines.append(f"-- rollback {rollback_sql}\n")
 
             i = j
         else:
