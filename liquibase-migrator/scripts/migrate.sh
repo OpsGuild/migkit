@@ -3,11 +3,22 @@
 set -e
 
 # Configuration
+CHANGELOG_FORMAT=${CHANGELOG_FORMAT:-sql}
 CHANGELOG_DIR=${CHANGELOG_DIR:-/liquibase/changelog}
 SCHEMA_DIR=${SCHEMA_DIR:-/liquibase/schema}
-MASTER_CHANGELOG=${MASTER_CHANGELOG:-$CHANGELOG_DIR/changelog.json}
 INIT_CHANGELOG=${INIT_CHANGELOG:-changelog-initial.sql}
 CURRENT_CHANGELOG=changelog-$(date +%Y%m%d-%H%M%S).sql
+
+if [ "$CHANGELOG_FORMAT" = "sql" ]; then
+  MASTER_CHANGELOG=${MASTER_CHANGELOG:-$CHANGELOG_DIR/changelog.json}
+elif [ "$CHANGELOG_FORMAT" = "xml" ]; then
+  MASTER_CHANGELOG=${MASTER_CHANGELOG:-$CHANGELOG_DIR/changelog.xml}
+else
+  echo "❌ Unsupported CHANGELOG_FORMAT: $CHANGELOG_FORMAT"
+  exit 1
+fi
+
+
 
 # Check if Liquibase is installed (skip for help/status commands)
 if ! command -v liquibase &>/dev/null; then
@@ -30,7 +41,7 @@ ROLLBACK_MODE=false
 SCRIPTS=()
 
 validate_env_vars() {
-	local required_vars=("MAIN_DB_HOST" "MAIN_DB_USER" "MAIN_DB_NAME" "REF_DB_HOST" "REF_DB_USER" "REF_DB_NAME")
+	local required_vars=("MAIN_DB_TYPE" "MAIN_DB_HOST" "MAIN_DB_USER" "MAIN_DB_NAME" "REF_DB_TYPE" "REF_DB_HOST" "REF_DB_USER" "REF_DB_NAME")
 	local missing_vars=()
 	
 	for var in "${required_vars[@]}"; do
@@ -46,8 +57,56 @@ validate_env_vars() {
 	
 	# Set defaults for optional variables
 	MAIN_DB_PASSWORD=${MAIN_DB_PASSWORD:-""}
+	MAIN_DB_PORT=${MAIN_DB_PORT:-5432}
 	REF_DB_PASSWORD=${REF_DB_PASSWORD:-""}
+	REF_DB_PORT=${REF_DB_PORT:-5432}
 	CHANGELOG_FORMAT=${CHANGELOG_FORMAT:-sql}
+}
+
+# Build database connection string based on type
+build_db_url() {
+	local db_type=$1
+	local db_host=$2
+	local db_port=$3
+	local db_name=$4
+	
+	case "$db_type" in
+		postgresql|postgres)
+			echo "jdbc:postgresql://$db_host:$db_port/$db_name"
+			;;
+		mysql)
+			echo "jdbc:mysql://$db_host:$db_port/$db_name"
+			;;
+		oracle)
+			echo "jdbc:oracle:thin:@$db_host:$db_port:$db_name"
+			;;
+		sqlserver|mssql)
+			echo "jdbc:sqlserver://$db_host:$db_port;databaseName=$db_name"
+			;;
+		h2)
+			echo "jdbc:h2:tcp://$db_host:$db_port/$db_name"
+			;;
+		*)
+			echo "jdbc:$db_type://$db_host:$db_port/$db_name"
+			;;
+	esac
+}
+
+# Set global Liquibase environment variables
+set_liquibase_env() {
+	export LIQUIBASE_COMMAND_URL="$(build_db_url "$MAIN_DB_TYPE" "$MAIN_DB_HOST" "$MAIN_DB_PORT" "$MAIN_DB_NAME")"
+	export LIQUIBASE_COMMAND_USERNAME="$MAIN_DB_USER"
+	export LIQUIBASE_COMMAND_PASSWORD="$MAIN_DB_PASSWORD"
+	export LIQUIBASE_COMMAND_REFERENCE_URL="$(build_db_url "$REF_DB_TYPE" "$REF_DB_HOST" "$REF_DB_PORT" "$REF_DB_NAME")"
+	export LIQUIBASE_COMMAND_REFERENCE_USERNAME="$REF_DB_USER"
+	export LIQUIBASE_COMMAND_REFERENCE_PASSWORD="$REF_DB_PASSWORD"
+}
+
+# Set Liquibase environment variables for reference database
+set_ref_liquibase_env() {
+	export LIQUIBASE_COMMAND_URL="$(build_db_url "$REF_DB_TYPE" "$REF_DB_HOST" "$REF_DB_PORT" "$REF_DB_NAME")"
+	export LIQUIBASE_COMMAND_USERNAME="$REF_DB_USER"
+	export LIQUIBASE_COMMAND_PASSWORD="$REF_DB_PASSWORD"
 }
 
 # Discover schema scripts
@@ -242,11 +301,15 @@ show_help() {
 	echo "  --status                Show current database status"
 	echo ""
 	echo "Environment Variables:"
+	echo "  MAIN_DB_TYPE           Main database type (postgresql, mysql, oracle, sqlserver, h2)"
 	echo "  MAIN_DB_HOST           Main database host"
+	echo "  MAIN_DB_PORT           Main database port (default: 5432)"
 	echo "  MAIN_DB_USER           Main database user"
 	echo "  MAIN_DB_PASSWORD       Main database password"
 	echo "  MAIN_DB_NAME           Main database name"
+	echo "  REF_DB_TYPE            Reference database type (postgresql, mysql, oracle, sqlserver, h2)"
 	echo "  REF_DB_HOST            Reference database host"
+	echo "  REF_DB_PORT            Reference database port (default: 5432)"
 	echo "  REF_DB_USER            Reference database user"
 	echo "  REF_DB_PASSWORD        Reference database password"
 	echo "  REF_DB_NAME            Reference database name"
@@ -400,6 +463,9 @@ main() {
 	discover_schema_scripts
 	parse_arguments "$@"
 	
+	# Set global Liquibase environment variables
+	set_liquibase_env
+	
 	# Create reference database first
 	create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
 	
@@ -420,7 +486,7 @@ main() {
 			# Generate changelog from reference database
 			if [ ! -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
 				echo "📝 Generating initial changelog from reference database..."
-				LIQUIBASE_COMMAND_URL="jdbc:postgresql://$REF_DB_HOST:5432/$REF_DB_NAME" \
+				set_ref_liquibase_env
 				liquibase --changelog-file="$CHANGELOG_DIR/$INIT_CHANGELOG" generateChangeLog \
 					--includeSchema=true \
 					--includeTablespace=true \
@@ -435,9 +501,12 @@ main() {
 				echo "⚠️ $INIT_CHANGELOG already exists. Skipping generation."
 			fi
 
+			# Include the changelog in master changelog before applying
+			include_changelog_if_valid "$INIT_CHANGELOG"
+			
 			# Apply the generated changelog to main database
 			echo "📋 Applying initial changelog to main database..."
-			LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
+			set_liquibase_env
 			liquibase update
 			
 		else
@@ -445,7 +514,6 @@ main() {
 			
 			# Generate changelog directly from main database
 			if [ ! -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
-				LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
 				liquibase --changelog-file="$CHANGELOG_DIR/$INIT_CHANGELOG" generateChangeLog \
 					--includeSchema=true \
 					--includeTablespace=true \
@@ -460,13 +528,13 @@ main() {
 				echo "⚠️ $INIT_CHANGELOG already exists. Skipping generation."
 			fi
 			
+			# Include the changelog in master changelog before synchronizing
+			include_changelog_if_valid "$INIT_CHANGELOG"
+			
 			# Mark current state as deployed
 			echo "📋 Synchronizing changelog with current state..."
-			LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
 			liquibase changelogSync
 		fi
-
-		include_changelog_if_valid "$INIT_CHANGELOG"
 		
 		echo "✅ Initialization complete! Database schema is now version-controlled."
 	fi
@@ -480,16 +548,12 @@ main() {
 		CHANGELOG_FILE=$CURRENT_CHANGELOG
 		
 		if [ "$CHANGELOG_FORMAT" = "xml" ]; then
-			LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
-			LIQUIBASE_COMMAND_REFERENCE_URL="jdbc:postgresql://$REF_DB_HOST:5432/$REF_DB_NAME" \
 			liquibase diff-changelog --changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" --format=xml --include-schema=true --include-tablespace=true --include-catalog=true --include-objects="columns, foreignkeys, indexes, primarykeys, tables, uniqueconstraints, views, functions, triggers, sequences"
 			include_changelog_if_valid "$CHANGELOG_FILE"
 			
 			echo "🔧 Adding rollback statements to XML changelog..."
 			python3 rollback-xml.py "$CHANGELOG_DIR/$CHANGELOG_FILE"
 		else
-			LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
-			LIQUIBASE_COMMAND_REFERENCE_URL="jdbc:postgresql://$REF_DB_HOST:5432/$REF_DB_NAME" \
 			liquibase diff-changelog --changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" --include-schema=true --include-tablespace=true --include-catalog=true --include-objects="columns, foreignkeys, indexes, primarykeys, tables, uniqueconstraints, views, functions, triggers, sequences"
 			include_changelog_if_valid "$CHANGELOG_FILE"
 			
@@ -512,8 +576,7 @@ main() {
 	if [ "$RUN_UPDATE" = true ]; then
 		create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
 		echo "🚀 Applying database changes..."
-		LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
-			liquibase update
+		liquibase update
 		if [ $? -eq 0 ]; then
 			printf "\n✅ Liquibase migration complete!\n"
 		else

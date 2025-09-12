@@ -27,26 +27,23 @@ services:
     restart: "no"
     environment:
       # Main DB
+      MAIN_DB_TYPE: postgresql
       MAIN_DB_HOST: postgres-test
+      MAIN_DB_PORT: 5432
       MAIN_DB_USER: testuser
       MAIN_DB_PASSWORD: testpass
       MAIN_DB_NAME: testdb
 
+      # Reference DB
+      REF_DB_TYPE: postgresql
       REF_DB_HOST: postgres-test
+      REF_DB_PORT: 5432
       REF_DB_USER: testuser
       REF_DB_PASSWORD: testpass
       REF_DB_NAME: testdb_ref
 
       CHANGELOG_FORMAT: sql
       SCHEMA_SCRIPTS: /liquibase/schema/00-init-db.sql,/liquibase/schema/01-init-data.sql,/liquibase/schema/02-triggers.sql 
-      # Liquibase standard environment variables
-      LIQUIBASE_DEFAULTS_FILE: /liquibase/liquibase.properties
-      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres-test:5432/testdb
-      LIQUIBASE_COMMAND_REFERENCE_URL: jdbc:postgresql://postgres-test:5432/testdb_tmp
-      LIQUIBASE_COMMAND_USERNAME: testuser
-      LIQUIBASE_COMMAND_PASSWORD: testpass
-      LIQUIBASE_COMMAND_REFERENCE_USERNAME: testuser
-      LIQUIBASE_COMMAND_REFERENCE_PASSWORD: testpass
     volumes:
       - ./schema:/liquibase/schema
       - ./liquibase.properties:/liquibase/liquibase.properties:ro
