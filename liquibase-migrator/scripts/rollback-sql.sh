@@ -315,6 +315,8 @@ process_changelog() {
                 elif [[ "$has_rollback" = true ]]; then
                     skipped_rollbacks=$((skipped_rollbacks + 1))
                 fi
+                # Add single blank line between changesets
+                echo "" >> "$temp_file"
             fi
             
             # Start new changeset
@@ -346,6 +348,10 @@ process_changelog() {
                             has_rollback=true
                         fi
                     fi
+                # Skip blank lines within changesets (they'll be added between changesets)
+                elif [[ -z "${line// }" ]]; then
+                    # Skip blank lines - we'll add them between changesets
+                    :
                 else
                     echo "$line" >> "$temp_file"
                 fi
@@ -386,6 +392,12 @@ main() {
     if [[ ! -f "$changelog_file" ]]; then
         echo "❌ Error: Changelog file '$changelog_file' not found"
         exit 1
+    fi
+    
+    # Check if file already has rollback statements
+    if grep -q "^[[:space:]]*--[[:space:]]*rollback" "$changelog_file"; then
+        echo "ℹ️  File already contains rollback statements, skipping: $changelog_file"
+        exit 0
     fi
     
     echo "🔧 Adding rollback statements to SQL changelog $changelog_file..."

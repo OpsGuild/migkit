@@ -578,7 +578,8 @@ main() {
 				echo "⚠️  No changelog file generated - skipping rollback statement addition"
 			fi
 			
-			if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
+			# Only process initial changelog if it exists and we're not in generate mode
+			if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ] && [ "$GENERATE_MODE" != true ]; then
 				./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
 			fi
 		fi

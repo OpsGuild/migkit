@@ -15,6 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Create a user with UID 1000 to match the host user
+RUN groupadd -g 1000 liquibase-user && \
+    useradd -u 1000 -g 1000 -m liquibase-user
+
 WORKDIR /liquibase
 RUN mkdir -p changelog schema
 
@@ -29,6 +33,13 @@ COPY changelog-schema/changelog.xml /liquibase/changelog/changelog.xml
 COPY liquibase-default.properties /liquibase/liquibase.properties
 
 RUN chmod +x /usr/local/bin/migrate /liquibase/rollback-sql.sh /liquibase/rollback-xml.sh /liquibase/fix-changelog-order.sh
+
+# Fix permissions for the liquibase-user
+RUN chown -R liquibase-user:liquibase-user /liquibase && \
+    chmod -R 755 /liquibase
+
+# Switch to the liquibase-user
+USER liquibase-user
 
 ENTRYPOINT ["migrate"]
 CMD ["--init"]
