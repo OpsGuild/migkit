@@ -1,0 +1,50 @@
+services:
+  postgres-test:
+    image: postgres:16
+    container_name: postgres-test
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: testdb
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata-test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  liquibase-test:
+    build: ../liquibase-migrator
+    image: migkit/liquibase-migrator:test
+    pull_policy: never
+    container_name: liquibase-test
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    environment:
+      # Legacy environment variables (for backward compatibility)
+      LIQ_DB_HOST: postgres-test
+      LIQ_DB_USER: testuser
+      LIQ_DB_PASSWORD: testpass
+      LIQ_DB_NAME: testdb
+      LIQ_DB_SNAPSHOT: testdb_tmp
+      CHANGELOG_FORMAT: sql
+      # Liquibase standard environment variables
+      LIQUIBASE_DEFAULTS_FILE: /liquibase/liquibase.properties
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres-test:5432/testdb
+      LIQUIBASE_COMMAND_REFERENCE_URL: jdbc:postgresql://postgres-test:5432/testdb_tmp
+      LIQUIBASE_COMMAND_USERNAME: testuser
+      LIQUIBASE_COMMAND_PASSWORD: testpass
+      LIQUIBASE_COMMAND_REFERENCE_USERNAME: testuser
+      LIQUIBASE_COMMAND_REFERENCE_PASSWORD: testpass
+    volumes:
+      - ./schema:/liquibase/schema
+      - ./liquibase.properties:/liquibase/liquibase.properties:ro
+      - ./changelog:/liquibase/changelog
+    command: ["--init"]
+
+volumes:
+  pgdata-test:

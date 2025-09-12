@@ -1,6 +1,11 @@
 FROM liquibase/liquibase:latest
 
-# Install postgres client, jq, python3
+LABEL org.opencontainers.image.title="Liquibase Migrator"
+LABEL org.opencontainers.image.description="Liquibase database migration tool with custom scripts"
+LABEL org.opencontainers.image.version="0.1.0"
+LABEL org.opencontainers.image.source="https://github.com/migkit/migkit"
+LABEL org.opencontainers.image.licenses="MIT"
+
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
       postgresql-client \
@@ -12,19 +17,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Create working directory
 WORKDIR /liquibase
+RUN mkdir -p changelog schema
 
-# Copy migration script and helpers
 COPY scripts/migrate.sh /usr/local/bin/migrate
-COPY scripts/rollback-sql.py rollback-xml.py /liquibase/
+COPY scripts/rollback-sql.py /liquibase/
+COPY scripts/rollback-xml.py /liquibase/
 
-# Copy changelogs schema
-COPY changelogs-schema /liquibase/changelogs-schema
+COPY changelog-schema/changelog.json /liquibase/changelog/changelog.json
+COPY changelog-schema/changelog.xml /liquibase/changelog/changelog.xml
 
-# Ensure script is executable
+COPY liquibase-default.properties /liquibase/liquibase.properties
+
 RUN chmod +x /usr/local/bin/migrate
 
-# Default entrypoint
 ENTRYPOINT ["migrate"]
 CMD ["--init"]

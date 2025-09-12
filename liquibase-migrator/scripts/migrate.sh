@@ -47,7 +47,9 @@ run_init_sql_scripts() {
 	echo "📝 Running init SQL scripts on main database..."
 
 	local scripts=(
+		/liquibase/schema/init-db.sql
 		/liquibase/schema/triggers.sql
+		/liquibase/schema/init-data.sql
 	)
 
 	for script in "${scripts[@]}"; do
@@ -285,7 +287,7 @@ fi
 
 if [ "$RUN_GENERATE" = true ]; then
 	printf "🛠️ Creating temporary Postgres database: $LIQ_DB_SNAPSHOT..."
-	PGPASSWORD="$LIQ_DB_PASSWORD" psql -h "$LIQ_DB_HOST" -U "$LIQ_DB_USER" -c "CREATE DATABASE $LIQ_DB_SNAPSHOT;"
+	PGPASSWORD="$LIQ_DB_PASSWORD" psql -h "$LIQ_DB_HOST" -U "$LIQ_DB_USER" -d postgres -c "CREATE DATABASE $LIQ_DB_SNAPSHOT;"
 
 	printf "\n📝 Applying reference SQL script to temp db...\n"
 	for script in "${SCRIPTS[@]}"; do
@@ -303,19 +305,23 @@ if [ "$RUN_GENERATE" = true ]; then
 	CHANGELOG_FORMAT=${CHANGELOG_FORMAT:-sql}  # Default to SQL, can be overridden with CHANGELOG_FORMAT=xml
 	
 	if [ "$CHANGELOG_FORMAT" = "xml" ]; then
-		liquibase diff-changelog --changelog-file="changelog/$CHANGELOG_FILE" --format=xml --include-schema=true --include-tablespace=true --include-catalog=true
+		liquibase diff-changelog --changelog-file="changelog/$CHANGELOG_FILE" --format=xml --include-schema=true --include-tablespace=true --include-catalog=true --include-objects="columns, foreignkeys, indexes, primarykeys, tables, uniqueconstraints, views, functions, triggers, sequences"
 		include_changelog_if_valid "$CHANGELOG_FILE"
 		
 		# Add rollback statements to the generated XML changelog
 		printf "\n🔧 Adding rollback statements to XML changelog...\n"
 		python3 rollback-xml.py "changelog/$CHANGELOG_FILE"
 	else
-		liquibase diff-changelog --changelog-file="changelog/$CHANGELOG_FILE" --include-schema=true --include-tablespace=true --include-catalog=true
+		liquibase diff-changelog --changelog-file="changelog/$CHANGELOG_FILE" --include-schema=true --include-tablespace=true --include-catalog=true --include-objects="columns, foreignkeys, indexes, primarykeys, tables, uniqueconstraints, views, functions, triggers, sequences"
 		include_changelog_if_valid "$CHANGELOG_FILE"
 		
 		# Add rollback statements to the generated SQL changelog
-		printf "\n🔧 Adding comprehensive rollback statements to SQL changelog...\n"
-		python3 rollback-sql.py "changelog/$CHANGELOG_FILE"
+		if [ -f "changelog/$CHANGELOG_FILE" ]; then
+			printf "\n🔧 Adding comprehensive rollback statements to SQL changelog...\n"
+			python3 rollback-sql.py "changelog/$CHANGELOG_FILE"
+		else
+			printf "\n⚠️  No changelog file generated - skipping rollback statement addition\n"
+		fi
 	fi
 
 	DROP_DB=true
