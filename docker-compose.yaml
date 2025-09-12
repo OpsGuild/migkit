@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  liquibase:
+    image: liquibase-migrator
+    container_name: liquibase
+    depends_on:
+      - postgres
+    environment:
+      LIQ_DB_HOST: postgres
+      LIQ_DB_USER: postgres
+      LIQ_DB_PASSWORD: secret
+      LIQ_DB_NAME: mydb
+      LIQ_DB_SNAPSHOT: mydb_tmp
+      CHANGELOG_FORMAT: sql
+      ENV: dev
+    volumes:
+      - ./changelog:/liquibase/changelog
+      - ./schema:/liquibase/schema
+    command: ["--init"]
+
+volumes:
+  pgdata:
+
