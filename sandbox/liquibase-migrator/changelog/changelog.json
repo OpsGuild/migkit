@@ -1,34 +1,3 @@
 {
-  "databaseChangeLog": [
-    {
-      "include": {
-        "file": "changelog-initial.sql",
-        "relativeToChangelogFile": true
-      }
-    },
-    {
-      "include": {
-        "file": "changelog-20250912-215342.sql",
-        "relativeToChangelogFile": true
-      }
-    },
-    {
-      "include": {
-        "file": "changelog-20250912-215524.sql",
-        "relativeToChangelogFile": true
-      }
-    },
-    {
-      "include": {
-        "file": "changelog-20250912-215542.sql",
-        "relativeToChangelogFile": true
-      }
-    },
-    {
-      "include": {
-        "file": "changelog-20250912-215624.sql",
-        "relativeToChangelogFile": true
-      }
-    }
-  ]
+  "databaseChangeLog": []
 }

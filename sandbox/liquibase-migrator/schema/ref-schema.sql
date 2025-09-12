@@ -11,8 +11,8 @@ CREATE TABLE users (
     status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
     phone VARCHAR(20),  -- Additional field
     last_login TIMESTAMP,  -- Additional field
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- Categories table
@@ -22,8 +22,8 @@ CREATE TABLE categories (
     description TEXT,
     parent_id INTEGER REFERENCES categories(id),
     is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- Posts table with additional fields
@@ -39,8 +39,8 @@ CREATE TABLE posts (
     view_count INTEGER DEFAULT 0,  -- Additional field
     featured BOOLEAN DEFAULT false,  -- Additional field
     published_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- Tags table
@@ -48,8 +48,8 @@ CREATE TABLE tags (
     id SERIAL PRIMARY KEY,
     name VARCHAR(50) UNIQUE NOT NULL,
     color VARCHAR(7) DEFAULT '#007bff',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- Post tags junction table
@@ -67,8 +67,8 @@ CREATE TABLE comments (
     parent_id INTEGER REFERENCES comments(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'spam')),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- User profiles table
@@ -79,8 +79,8 @@ CREATE TABLE user_profiles (
     website VARCHAR(200),
     location VARCHAR(100),
     birth_date DATE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- Additional table for user sessions
@@ -89,7 +89,7 @@ CREATE TABLE user_sessions (
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     session_token VARCHAR(255) UNIQUE NOT NULL,
     expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT now()
 );
 
 -- Create indexes for better performance
