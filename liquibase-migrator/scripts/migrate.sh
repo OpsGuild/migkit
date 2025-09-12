@@ -313,19 +313,28 @@ parse_arguments() {
 		case $1 in
 			-g | --generate)
 				RUN_UPDATE=false
+				DROP_DB=true
 				shift
 				;;
 			-u | --update)
 				RUN_GENERATE=false
+				DROP_DB=true
 				shift
 				;;
 			-i | --init)
 				INIT=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
+				DROP_DB=true
 				shift
 				;;
-			--c | --clean)
+			-a | --generate-and-update)
+				RUN_GENERATE=true
+				RUN_UPDATE=true
+				DROP_DB=true
+				shift
+				;;
+			-c | --clean)
 				DROP_DB=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
@@ -460,11 +469,10 @@ main() {
 		include_changelog_if_valid "$INIT_CHANGELOG"
 		
 		echo "✅ Initialization complete! Database schema is now version-controlled."
-		DROP_DB=true
-		exit 0
 	fi
 
 	if [ "$RUN_GENERATE" = true ]; then
+		# Apply schema to reference database
 		create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
 		run_sql_scripts_on_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
 
@@ -502,6 +510,7 @@ main() {
 	fi
 
 	if [ "$RUN_UPDATE" = true ]; then
+		create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
 		echo "🚀 Applying database changes..."
 		LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
 			liquibase update
@@ -515,8 +524,6 @@ main() {
 				printf "\n❌ changelogSync also failed. Divine intervention may be required.\n"
 			fi
 		fi
-		DROP_DB=true
-
 	fi
 
 	# Handle rollback operations
@@ -550,7 +557,8 @@ main() {
 
 	if [ "$DROP_DB" = true ]; then
 		printf "\n🧹 Cleaning up: Dropping temporary database...\n"
-		PGPASSWORD="$REF_DB_PASSWORD" psql -h "$REF_DB_HOST" -U "$REF_DB_USER" -c "DROP DATABASE IF EXISTS $REF_DB_NAME;"
+		PGPASSWORD="$REF_DB_PASSWORD" psql -h "$REF_DB_HOST" -U "$REF_DB_USER" -d "postgres" -c "DROP DATABASE IF EXISTS \"$REF_DB_NAME\";"
+		exit 0
 	fi
 }
 
