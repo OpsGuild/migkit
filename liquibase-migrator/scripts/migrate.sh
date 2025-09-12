@@ -503,7 +503,7 @@ main() {
 				# Add rollback statements to initial changelog
 				if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
 					echo "🔧 Adding rollback statements to initial changelog..."
-					python3 rollback-sql.py "$CHANGELOG_DIR/$INIT_CHANGELOG"
+					./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
 				fi
 			else
 				echo "⚠️ $INIT_CHANGELOG already exists. Skipping generation."
@@ -530,7 +530,7 @@ main() {
 				# Add rollback statements to initial changelog
 				if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
 					echo "🔧 Adding rollback statements to initial changelog..."
-					python3 rollback-sql.py "$CHANGELOG_DIR/$INIT_CHANGELOG"
+					./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
 				fi
 			else
 				echo "⚠️ $INIT_CHANGELOG already exists. Skipping generation."
@@ -564,7 +564,7 @@ main() {
 			include_changelog_if_valid "$CHANGELOG_FILE"
 			
 			echo "🔧 Adding rollback statements to XML changelog..."
-			python3 rollback-xml.py "$CHANGELOG_DIR/$CHANGELOG_FILE"
+			./rollback-xml.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
 		else
 			liquibase diff-changelog \
 				--changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" \
@@ -574,14 +574,14 @@ main() {
 			
 			if [ -f "$CHANGELOG_DIR/$CHANGELOG_FILE" ]; then
 				echo "🔧 Adding comprehensive rollback statements to SQL changelog..."
-				python3 rollback-sql.py "$CHANGELOG_DIR/$CHANGELOG_FILE"
+				./rollback-sql.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
 			else
 				echo "⚠️  No changelog file generated - skipping rollback statement addition"
 			fi
 			
 			if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
 				echo "🔧 Adding rollback statements to existing initial changelog..."
-				python3 rollback-sql.py "$CHANGELOG_DIR/$INIT_CHANGELOG"
+				./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
 			fi
 		fi
 

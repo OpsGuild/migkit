@@ -15,9 +15,9 @@ NC='\033[0m' # No Color
 # Test configuration
 TEST_DB="testdb_sql"
 REF_DB="testdb_ref_sql"
-CHANGELOG_DIR="test/changelog-sql"
-SCHEMA_DIR="test/schema-sql"
-TEST_RESULTS_DIR="test/results-sql"
+CHANGELOG_DIR="../sandbox/liquibase-migrator/changelog-sql"
+SCHEMA_DIR="../sandbox/liquibase-migrator/schema-sql"
+TEST_RESULTS_DIR="../sandbox/liquibase-migrator/results-sql"
 
 # Test counters
 TESTS_PASSED=0
@@ -44,7 +44,7 @@ print_warning() {
 # Cleanup function
 cleanup() {
     print_status "Cleaning up test environment..."
-    docker compose -f test/docker-compose.yaml down -v >/dev/null 2>&1 || true
+    docker compose -f ../../docker-compose.yaml down -v >/dev/null 2>&1 || true
     rm -rf "$CHANGELOG_DIR" "$SCHEMA_DIR" "$TEST_RESULTS_DIR" >/dev/null 2>&1 || true
 }
 
@@ -57,19 +57,19 @@ setup_test_environment() {
     
     # Start services
     print_status "Starting test services..."
-    docker compose -f test/docker-compose.yaml up -d postgres-test
+    docker compose -f ../../docker-compose.yaml up -d postgres-test
     
     # Wait for database to be ready
     print_status "Waiting for database to be ready..."
-    until docker compose -f test/docker-compose.yaml exec postgres-test pg_isready -U testuser -d postgres >/dev/null 2>&1; do
+    until docker compose -f ../../docker-compose.yaml exec postgres-test pg_isready -U testuser -d postgres >/dev/null 2>&1; do
         sleep 1
     done
     
     # Create test databases (clean up first)
-    docker compose -f test/docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;" 2>/dev/null || true
-    docker compose -f test/docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $REF_DB;" 2>/dev/null || true
-    docker compose -f test/docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $TEST_DB;"
-    docker compose -f test/docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $REF_DB;"
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;" 2>/dev/null || true
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $REF_DB;" 2>/dev/null || true
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $TEST_DB;"
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $REF_DB;"
     
     print_success "Test environment setup complete"
 }
@@ -79,7 +79,7 @@ test_liquibase_init() {
     print_status "Testing Liquibase initialization..."
     
     # Test --init command (this should just sync the changelog, not apply it)
-    if docker compose -f test/docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --init; then
+    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --init; then
         print_success "Liquibase initialization successful"
         return 0
     else
@@ -93,7 +93,7 @@ test_generate_initial_changelog() {
     print_status "Testing initial changelog generation..."
     
     # Create test data that matches the existing init-db.sql schema
-    cat > "test/schema/test-data.sql" << 'EOF'
+    cat > "../sandbox/liquibase-migrator/schema/test-data.sql" << 'EOF'
 -- Test data for migration testing
 -- This data will be inserted into the reference database
 
@@ -151,13 +151,13 @@ EOF
 
     # Ensure test database is completely empty (no schema applied)
     print_status "Ensuring test database is empty..."
-    docker compose -f test/docker-compose.yaml exec -T postgres-test psql -U testuser -d "$TEST_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d "$TEST_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
     
     # Note: Schema and data will be applied by the migrate script using REFERENCE_SCHEMA
     
     # Generate changelog using ref-schema.sql for the reference database
     # Note: TEST_DB should be empty, REF_DB will have the reference schema
-    if docker compose -f test/docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" -e LIQ_DB_SNAPSHOT="$REF_DB" -e LIQUIBASE_COMMAND_REFERENCE_URL="jdbc:postgresql://postgres-test:5432/$REF_DB" -e REFERENCE_SCHEMA="/liquibase/schema/ref-schema.sql" liquibase-test --generate; then
+    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" -e LIQ_DB_SNAPSHOT="$REF_DB" -e LIQUIBASE_COMMAND_REFERENCE_URL="jdbc:postgresql://postgres-test:5432/$REF_DB" -e REFERENCE_SCHEMA="/liquibase/schema/ref-schema.sql" liquibase-test --generate; then
         print_success "Initial changelog generation successful"
         return 0
     else
@@ -170,7 +170,7 @@ EOF
 test_apply_changelog() {
     print_status "Testing changelog application..."
     
-    if docker compose -f test/docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --update; then
+    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --update; then
         print_success "Changelog application successful"
         return 0
     else
@@ -327,7 +327,7 @@ EOF
 EOF
 
     # Apply the new changeset
-    if docker compose -f test/docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --update; then
+    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --update; then
         print_success "SQL operations changeset applied successfully"
         return 0
     else
@@ -341,7 +341,7 @@ test_rollback_by_count() {
     print_status "Testing rollback by count (3 levels)..."
     
     # Rollback 3 changesets
-    if docker compose -f test/docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback 3; then
+    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback 3; then
         print_success "Rollback by count (3 levels) successful"
         return 0
     else
@@ -355,7 +355,7 @@ test_rollback_to_changeset() {
     print_status "Testing rollback to specific changeset..."
     
     # Rollback to a specific changeset
-    if docker compose -f test/docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-to-changeset "migkit:add-user-fields"; then
+    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-to-changeset "migkit:add-user-fields"; then
         print_success "Rollback to changeset successful"
         return 0
     else
@@ -368,7 +368,7 @@ test_rollback_to_changeset() {
 test_rollback_all() {
     print_status "Testing rollback all..."
     
-    if docker compose -f test/docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-all; then
+    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-all; then
         print_success "Rollback all successful"
         return 0
     else
@@ -381,7 +381,7 @@ test_rollback_all() {
 test_migration_status() {
     print_status "Testing migration status..."
     
-    if docker compose -f test/docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --status; then
+    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --status; then
         print_success "Migration status check successful"
         return 0
     else
@@ -396,7 +396,7 @@ test_rollback_to_date() {
     
     # Rollback to a specific date (yesterday)
     local yesterday=$(date -d "yesterday" +%Y-%m-%d)
-    if docker compose -f test/docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-to-date "$yesterday"; then
+    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-to-date "$yesterday"; then
         print_success "Rollback to date successful"
         return 0
     else
@@ -449,10 +449,10 @@ run_all_tests() {
 # Cleanup between tests
 cleanup_between_tests() {
     # Clean up any existing test databases to prevent conflicts
-    docker compose -f test/docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB; DROP DATABASE IF EXISTS $REF_DB;" 2>/dev/null || true
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB; DROP DATABASE IF EXISTS $REF_DB;" 2>/dev/null || true
     # Recreate them
-    docker compose -f test/docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $TEST_DB;" 2>/dev/null || true
-    docker compose -f test/docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $REF_DB;" 2>/dev/null || true
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $TEST_DB;" 2>/dev/null || true
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $REF_DB;" 2>/dev/null || true
 }
 
 # Helper function to run individual tests

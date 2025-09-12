@@ -17,7 +17,7 @@ services:
       retries: 5
 
   liquibase-test:
-    build: ../liquibase-migrator
+    build: ./liquibase-migrator
     image: migkit/liquibase-migrator:test
     pull_policy: never
     container_name: liquibase-test
@@ -45,9 +45,9 @@ services:
       CHANGELOG_FORMAT: sql
       SCHEMA_SCRIPTS: /liquibase/schema/00-init-db.sql,/liquibase/schema/01-init-data.sql,/liquibase/schema/02-triggers.sql 
     volumes:
-      - ./schema:/liquibase/schema
-      - ./liquibase.properties:/liquibase/liquibase.properties:ro
-      - ./changelog:/liquibase/changelog
+      - ./sandbox/liquibase-migrator/schema:/liquibase/schema
+      - ./sandbox/liquibase-migrator/liquibase.properties:/liquibase/liquibase.properties:ro
+      - ./sandbox/liquibase-migrator/changelog:/liquibase/changelog
     # Default command can be overridden when running
     # Examples:
     # --init

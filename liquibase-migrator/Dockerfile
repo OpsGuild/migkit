@@ -10,8 +10,6 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
       postgresql-client \
       jq \
-      python3 \
-      python3-pip \
       bash \
       curl \
       ca-certificates \
@@ -21,15 +19,15 @@ WORKDIR /liquibase
 RUN mkdir -p changelog schema
 
 COPY scripts/migrate.sh /usr/local/bin/migrate
-COPY scripts/rollback-sql.py /liquibase/
-COPY scripts/rollback-xml.py /liquibase/
+COPY scripts/rollback-sql.sh /liquibase/
+COPY scripts/rollback-xml.sh /liquibase/
 
 COPY changelog-schema/changelog.json /liquibase/changelog/changelog.json
 COPY changelog-schema/changelog.xml /liquibase/changelog/changelog.xml
 
 COPY liquibase-default.properties /liquibase/liquibase.properties
 
-RUN chmod +x /usr/local/bin/migrate
+RUN chmod +x /usr/local/bin/migrate /liquibase/rollback-sql.sh /liquibase/rollback-xml.sh
 
 ENTRYPOINT ["migrate"]
 CMD ["--init"]
