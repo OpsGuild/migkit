@@ -47,9 +47,9 @@ extract_column_info() {
     local sql_upper=$(echo "$sql" | tr '[:lower:]' '[:upper:]' | tr -s ' ')
     
     # ADD COLUMN
-    if echo "$sql_upper" | grep -q "ADD COLUMN"; then
+    if echo "$sql_upper" | grep -q "ADD.*COLUMN\|ADD[[:space:]]\+[A-Z\"']"; then
         local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1)
-        local column=$(echo "$sql" | sed -n 's/.*ADD[[:space:]]\+COLUMN[[:space:]]\+"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
+        local column=$(echo "$sql" | sed -n 's/.*ADD[[:space:]]\+[A-Z]*[[:space:]]*"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
         echo "${table}|${column}"
     # DROP COLUMN
     elif echo "$sql_upper" | grep -q "DROP COLUMN"; then
@@ -136,7 +136,7 @@ generate_rollback() {
         else
             echo "-- Empty rollback (manual intervention required)"
         fi
-    elif echo "$sql_upper" | grep -q "ALTER[[:space:]]\+TABLE.*ADD.*COLUMN"; then
+    elif echo "$sql_upper" | grep -q "ALTER[[:space:]]\+TABLE.*ADD.*COLUMN\|ALTER[[:space:]]\+TABLE.*ADD[[:space:]]\+[A-Z\"']"; then
         local column_info=$(extract_column_info "$sql")
         local table_name=$(echo "$column_info" | cut -d'|' -f1)
         local column_name=$(echo "$column_info" | cut -d'|' -f2)
@@ -201,6 +201,30 @@ generate_rollback() {
         local table_name=$(extract_table_name "$sql")
         if [[ -n "$table_name" ]]; then
             echo "-- Rollback for DROP PRIMARY KEY requires original primary key definition"
+        else
+            echo "-- Empty rollback (manual intervention required)"
+        fi
+    elif echo "$sql_upper" | grep -q "ALTER[[:space:]]\+COLUMN.*SET[[:space:]]\+DEFAULT"; then
+        local column_info=$(extract_column_info "$sql")
+        local table_name=$(echo "$column_info" | cut -d'|' -f1)
+        local column_name=$(echo "$column_info" | cut -d'|' -f2)
+        if [[ -n "$table_name" && -n "$column_name" ]]; then
+            # Clean up names
+            table_name=$(echo "$table_name" | sed 's/^\.//' | sed 's/^/"/' | sed 's/\./"./')
+            if [[ ! "$table_name" =~ \".*\" ]]; then
+                table_name="\"$table_name\""
+            fi
+            column_name="\"$column_name\""
+            echo "ALTER TABLE $table_name ALTER COLUMN $column_name DROP DEFAULT;"
+        else
+            echo "-- Empty rollback (manual intervention required)"
+        fi
+    elif echo "$sql_upper" | grep -q "ALTER[[:space:]]\+COLUMN.*DROP[[:space:]]\+DEFAULT"; then
+        local column_info=$(extract_column_info "$sql")
+        local table_name=$(echo "$column_info" | cut -d'|' -f1)
+        local column_name=$(echo "$column_info" | cut -d'|' -f2)
+        if [[ -n "$table_name" && -n "$column_name" ]]; then
+            echo "-- Rollback for DROP DEFAULT requires original default value"
         else
             echo "-- Empty rollback (manual intervention required)"
         fi
@@ -348,9 +372,7 @@ process_changelog() {
     # Replace original file with processed content
     mv "$temp_file" "$filename"
     
-    echo "📊 Processed $total_changesets changesets:"
-    echo "   ✅ Added rollbacks to $added_rollbacks changesets"
-    echo "   ⏭️  Skipped $skipped_rollbacks changesets (already have rollbacks)"
+    echo "✅ Added rollbacks to $added_rollbacks changesets"
 }
 
 # Main execution
@@ -368,7 +390,6 @@ main() {
     
     echo "🔧 Adding rollback statements to SQL changelog $changelog_file..."
     process_changelog "$changelog_file"
-    echo "✅ Comprehensive rollback statements added successfully!"
     echo "⚠️  Note: Please review generated rollback statements for accuracy"
     echo "⚠️  Some complex changes may require manual rollback statements"
 }

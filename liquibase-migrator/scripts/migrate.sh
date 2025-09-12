@@ -563,7 +563,6 @@ main() {
 				--include-catalog=true
 			include_changelog_if_valid "$CHANGELOG_FILE"
 			
-			echo "🔧 Adding rollback statements to XML changelog..."
 			./rollback-xml.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
 		else
 			liquibase diff-changelog \
@@ -573,17 +572,13 @@ main() {
 			include_changelog_if_valid "$CHANGELOG_FILE"
 			
 			if [ -f "$CHANGELOG_DIR/$CHANGELOG_FILE" ]; then
-				echo "🔧 Fixing changelog ordering to ensure proper dependency sequence..."
 				./fix-changelog-order.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
-				
-				echo "🔧 Adding comprehensive rollback statements to SQL changelog..."
 				./rollback-sql.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
 			else
 				echo "⚠️  No changelog file generated - skipping rollback statement addition"
 			fi
 			
 			if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
-				echo "🔧 Adding rollback statements to existing initial changelog..."
 				./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
 			fi
 		fi
