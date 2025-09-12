@@ -448,6 +448,14 @@ parse_arguments() {
 				show_help
 				exit 0
 				;;
+			bash)
+				echo "🐚 Starting bash shell..."
+				exec /bin/bash
+				;;
+			sh)
+				echo "🐚 Starting sh shell..."
+				exec /bin/sh
+				;;
 			*)
 				echo "❌ Unknown option: $1"
 				echo "Use --help for usage information"
@@ -548,13 +556,20 @@ main() {
 		CHANGELOG_FILE=$CURRENT_CHANGELOG
 		
 		if [ "$CHANGELOG_FORMAT" = "xml" ]; then
-			liquibase diff-changelog --changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" --format=xml --include-schema=true --include-tablespace=true --include-catalog=true --include-objects="columns, foreignkeys, indexes, primarykeys, tables, uniqueconstraints, views, functions, triggers, sequences"
+			liquibase diff-changelog \
+				--changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" \
+				--include-schema=true \
+				--include-tablespace=true \
+				--include-catalog=true
 			include_changelog_if_valid "$CHANGELOG_FILE"
 			
 			echo "🔧 Adding rollback statements to XML changelog..."
 			python3 rollback-xml.py "$CHANGELOG_DIR/$CHANGELOG_FILE"
 		else
-			liquibase diff-changelog --changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" --include-schema=true --include-tablespace=true --include-catalog=true --include-objects="columns, foreignkeys, indexes, primarykeys, tables, uniqueconstraints, views, functions, triggers, sequences"
+			liquibase diff-changelog \
+				--changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" \
+				--include-schema=true --include-tablespace=true \
+				--include-catalog=true
 			include_changelog_if_valid "$CHANGELOG_FILE"
 			
 			if [ -f "$CHANGELOG_DIR/$CHANGELOG_FILE" ]; then

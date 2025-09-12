@@ -48,12 +48,12 @@ services:
       - ./schema:/liquibase/schema
       - ./liquibase.properties:/liquibase/liquibase.properties:ro
       - ./changelog:/liquibase/changelog
-    command: ["--init"]
     # Default command can be overridden when running
     # Examples:
     # --init
     # --generate
     # --update
+    # --shell
 
 volumes:
   pgdata-test:
