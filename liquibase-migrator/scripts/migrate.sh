@@ -573,6 +573,9 @@ main() {
 			include_changelog_if_valid "$CHANGELOG_FILE"
 			
 			if [ -f "$CHANGELOG_DIR/$CHANGELOG_FILE" ]; then
+				echo "🔧 Fixing changelog ordering to ensure proper dependency sequence..."
+				./fix-changelog-order.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
+				
 				echo "🔧 Adding comprehensive rollback statements to SQL changelog..."
 				./rollback-sql.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
 			else

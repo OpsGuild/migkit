@@ -92,3 +92,4 @@ else
     print_error "Some tests failed! ❌"
     exit 1
 fi
+
