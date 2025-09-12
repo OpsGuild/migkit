@@ -30,7 +30,7 @@ ROLLBACK_MODE=false
 SCRIPTS=()
 
 validate_env_vars() {
-	local required_vars=("LIQ_DB_HOST" "LIQ_DB_USER" "LIQ_DB_NAME")
+	local required_vars=("MAIN_DB_HOST" "MAIN_DB_USER" "MAIN_DB_NAME" "REF_DB_HOST" "REF_DB_USER" "REF_DB_NAME")
 	local missing_vars=()
 	
 	for var in "${required_vars[@]}"; do
@@ -44,8 +44,9 @@ validate_env_vars() {
 		exit 1
 	fi
 	
-	# Set default for optional variables
-	LIQ_DB_SNAPSHOT=${LIQ_DB_SNAPSHOT:-${LIQ_DB_NAME}_snapshot}
+	# Set defaults for optional variables
+	MAIN_DB_PASSWORD=${MAIN_DB_PASSWORD:-""}
+	REF_DB_PASSWORD=${REF_DB_PASSWORD:-""}
 	CHANGELOG_FORMAT=${CHANGELOG_FORMAT:-sql}
 }
 
@@ -72,18 +73,41 @@ discover_schema_scripts() {
 	fi
 }
 
+create_ref_db() {
+	local db_host=$1
+	local db_user=$2
+	local db_password=$3
+	local db_name=$4
+	
+	echo "🏗️ Creating reference database $db_name..."
+	
+	# Try to create the database (ignore error if it already exists)
+	if PGPASSWORD="$db_password" psql -h "$db_host" -U "$db_user" -d "postgres" -c "CREATE DATABASE \"$db_name\";" &>/dev/null; then
+		echo "✅ Reference database $db_name created successfully!"
+	elif PGPASSWORD="$db_password" psql -h "$db_host" -U "$db_user" -d "$db_name" -c '\q' &>/dev/null; then
+		echo "ℹ️ Reference database $db_name already exists."
+	else
+		echo "⚠️ Could not create or verify reference database $db_name. Will attempt to continue..."
+	fi
+}
+
 wait_for_db() {
+	local db_host=$1
+	local db_user=$2
+	local db_password=$3
+	local db_name=$4
+	
 	local RETRIES=20
 	local WAIT=30
 
-	echo "⏳ Waiting for $LIQ_DB_HOST to be ready..."
+	echo "⏳ Waiting for $db_name to be ready..."
 
 	for ((i = 1; i <= RETRIES; i++)); do
-		if PGPASSWORD="$LIQ_DB_PASSWORD" psql -h "$LIQ_DB_HOST" -U "$LIQ_DB_USER" -d postgres -c '\q' &>/dev/null; then
-			echo "✅ Database is ready!"
+		if PGPASSWORD="$db_password" psql -h "$db_host" -U "$db_user" -d "$db_name" -c '\q' &>/dev/null; then
+			echo "✅ Database $db_name is ready!"
 			return 0
 		fi
-		echo "  Attempt $i/$RETRIES: DB not ready yet, retrying in $WAITs..."
+		echo "  Attempt $i/$RETRIES: DB $db_name not ready yet, retrying in $WAITs..."
 		sleep $WAIT
 	done
 
@@ -91,21 +115,36 @@ wait_for_db() {
 	exit 1
 }
 
-run_init_sql_scripts() {
-    echo "📝 Running init SQL scripts on main database..."
+run_sql_scripts_on_db() {
+    local db_host=$1
+    local db_user=$2
+    local db_password=$3
+    local db_name=$4
+    
+    echo "📝 Running SQL scripts on database: $db_name"
 
     for script in "${SCRIPTS[@]}"; do
         if [ -f "$script" ]; then
-            echo "  - Running $script"
-            PGPASSWORD="$LIQ_DB_PASSWORD" psql \
-                -h "$LIQ_DB_HOST" \
-                -U "$LIQ_DB_USER" \
-                -d "$LIQ_DB_NAME" \
+            echo "  - Running $script on $db_name"
+            PGPASSWORD="$db_password" psql \
+                -h "$db_host" \
+                -U "$db_user" \
+                -d "$db_name" \
                 -f "$script"
         else
             echo "  ⚠️  Skipping missing script: $script"
         fi
     done
+}
+
+is_database_empty() {
+    local db_host=$1
+    local db_user=$2
+    local db_password=$3
+    local db_name=$4
+    
+    local table_count=$(PGPASSWORD="$db_password" psql -h "$db_host" -U "$db_user" -d "$db_name" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null || echo "0")
+    [ "$table_count" -eq 0 ]
 }
 
 show_rollback_status() {
@@ -203,11 +242,14 @@ show_help() {
 	echo "  --status                Show current database status"
 	echo ""
 	echo "Environment Variables:"
-	echo "  LIQ_DB_HOST            Database host"
-	echo "  LIQ_DB_USER            Database user"
-	echo "  LIQ_DB_PASSWORD        Database password"
-	echo "  LIQ_DB_NAME            Database name"
-	echo "  LIQ_DB_SNAPSHOT        Temporary database name"
+	echo "  MAIN_DB_HOST           Main database host"
+	echo "  MAIN_DB_USER           Main database user"
+	echo "  MAIN_DB_PASSWORD       Main database password"
+	echo "  MAIN_DB_NAME           Main database name"
+	echo "  REF_DB_HOST            Reference database host"
+	echo "  REF_DB_USER            Reference database user"
+	echo "  REF_DB_PASSWORD        Reference database password"
+	echo "  REF_DB_NAME            Reference database name"
 	echo "  CHANGELOG_FORMAT       Changelog format (sql|xml, default: sql)"
 	echo "  CHANGELOG_DIR          Changelog directory (default: /liquibase/changelog)"
 	echo "  SCHEMA_DIR             Schema directory (default: /liquibase/schema)"
@@ -277,13 +319,13 @@ parse_arguments() {
 				RUN_GENERATE=false
 				shift
 				;;
-			--init)
+			-i | --init)
 				INIT=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				shift
 				;;
-			--clean)
+			--c | --clean)
 				DROP_DB=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
@@ -296,35 +338,35 @@ parse_arguments() {
 				ROLLBACK_COUNT="$2"
 				shift 2
 				;;
-			--rollback-to-date)
+			-rtd | --rollback-to-date)
 				ROLLBACK_MODE=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				ROLLBACK_TO_DATE="$2"
 				shift 2
 				;;
-			--rollback-to-changeset)
+			-rtc | --rollback-to-changeset)
 				ROLLBACK_MODE=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				ROLLBACK_TO_CHANGESET="$2"
 				shift 2
 				;;
-			--rollback-to-tag)
+			-rtt | --rollback-to-tag)
 				ROLLBACK_MODE=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				ROLLBACK_TO_TAG="$2"
 				shift 2
 				;;
-			--rollback-all)
+			-ra | --rollback-all)
 				ROLLBACK_MODE=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				ROLLBACK_COUNT="all"
 				shift
 				;;
-			--status)
+			-s | --status)
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				show_rollback_status
@@ -348,88 +390,122 @@ main() {
 	validate_env_vars
 	discover_schema_scripts
 	parse_arguments "$@"
-	wait_for_db
+	
+	# Create reference database first
+	create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
+	
+	# Wait for both databases
+	wait_for_db "$MAIN_DB_HOST" "$MAIN_DB_USER" "$MAIN_DB_PASSWORD" "$MAIN_DB_NAME"
+	wait_for_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
 
 	if [ "$INIT" = true ]; then
-		if [ ! -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
-			echo "🛠️ Creating temporary Postgres database: $LIQ_DB_SNAPSHOT..."
-			PGPASSWORD="$LIQ_DB_PASSWORD" psql -h "$LIQ_DB_HOST" -U "$LIQ_DB_USER" -d postgres -c "CREATE DATABASE $LIQ_DB_SNAPSHOT;"
+		echo "🚀 Initializing database changelog..."
+		
+		# Check if main database is empty
+		if is_database_empty "$MAIN_DB_HOST" "$MAIN_DB_USER" "$MAIN_DB_PASSWORD" "$MAIN_DB_NAME"; then
+			echo "📋 Main database is empty, generating changelog from reference database..."
+			
+			# Apply schema to reference database
+			run_sql_scripts_on_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
 
-			echo "📝 Applying reference SQL script to temp db..."
-			for script in "${SCRIPTS[@]}"; do
-				if [ -f "$script" ]; then
-					echo "  - Applying $script"
-					PGPASSWORD="$LIQ_DB_PASSWORD" psql -h "$LIQ_DB_HOST" -U "$LIQ_DB_USER" -d "$LIQ_DB_SNAPSHOT" -f "$script"
-				else
-					echo "  ⚠️  Skipping missing script: $script"
+			# Generate changelog from reference database
+			if [ ! -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
+				echo "📝 Generating initial changelog from reference database..."
+				LIQUIBASE_COMMAND_URL="jdbc:postgresql://$REF_DB_HOST:5432/$REF_DB_NAME" \
+				liquibase --changelog-file="$CHANGELOG_DIR/$INIT_CHANGELOG" generateChangeLog \
+					--includeSchema=true \
+					--includeTablespace=true \
+					--includeCatalog=true
+				
+				# Add rollback statements to initial changelog
+				if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
+					echo "🔧 Adding rollback statements to initial changelog..."
+					python3 rollback-sql.py "$CHANGELOG_DIR/$INIT_CHANGELOG"
 				fi
-			done
-
-			echo "🔄 Generating initial changelog..."
-			if [ "$CHANGELOG_FORMAT" = "xml" ]; then
-				liquibase diff-changelog --changelog-file="$CHANGELOG_DIR/$INIT_CHANGELOG" --format=xml --include-schema=true --include-tablespace=true --include-catalog=true --include-objects="columns, foreignkeys, indexes, primarykeys, tables, uniqueconstraints, views, functions, triggers, sequences"
 			else
-				liquibase diff-changelog --changelog-file="$CHANGELOG_DIR/$INIT_CHANGELOG" --include-schema=true --include-tablespace=true --include-catalog=true --include-objects="columns, foreignkeys, indexes, primarykeys, tables, uniqueconstraints, views, functions, triggers, sequences"
+				echo "⚠️ $INIT_CHANGELOG already exists. Skipping generation."
 			fi
 
-			echo "🧹 Cleaning up: Dropping temporary database..."
-			PGPASSWORD="$LIQ_DB_PASSWORD" psql -h "$LIQ_DB_HOST" -U "$LIQ_DB_USER" -d postgres -c "DROP DATABASE IF EXISTS $LIQ_DB_SNAPSHOT;"
+			# Apply the generated changelog to main database
+			echo "📋 Applying initial changelog to main database..."
+			LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
+			liquibase update
+			
 		else
-			echo "⚠️ $INIT_CHANGELOG already exists. Skipping generation."
+			echo "📋 Main database has existing schema, generating changelog from current state..."
+			
+			# Generate changelog directly from main database
+			if [ ! -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
+				LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
+				liquibase --changelog-file="$CHANGELOG_DIR/$INIT_CHANGELOG" generateChangeLog \
+					--includeSchema=true \
+					--includeTablespace=true \
+					--includeCatalog=true
+				
+				# Add rollback statements to initial changelog
+				if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
+					echo "🔧 Adding rollback statements to initial changelog..."
+					python3 rollback-sql.py "$CHANGELOG_DIR/$INIT_CHANGELOG"
+				fi
+			else
+				echo "⚠️ $INIT_CHANGELOG already exists. Skipping generation."
+			fi
+			
+			# Mark current state as deployed
+			echo "📋 Synchronizing changelog with current state..."
+			LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
+			liquibase changelogSync
 		fi
 
 		include_changelog_if_valid "$INIT_CHANGELOG"
-		liquibase changelogSync
+		
+		echo "✅ Initialization complete! Database schema is now version-controlled."
+		DROP_DB=true
+		exit 0
 	fi
 
 	if [ "$RUN_GENERATE" = true ]; then
-		printf "🛠️ Creating temporary Postgres database: $LIQ_DB_SNAPSHOT..."
-		PGPASSWORD="$LIQ_DB_PASSWORD" psql -h "$LIQ_DB_HOST" -U "$LIQ_DB_USER" -d postgres -c "CREATE DATABASE $LIQ_DB_SNAPSHOT;"
+		create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
+		run_sql_scripts_on_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
 
-		printf "\n📝 Applying reference SQL script to temp db...\n"
-		for script in "${SCRIPTS[@]}"; do
-			if [ -f "$script" ]; then
-				printf "  - Applying %s\n" "$script"
-				PGPASSWORD="$LIQ_DB_PASSWORD" psql -h "$LIQ_DB_HOST" -U "$LIQ_DB_USER" -d "$LIQ_DB_SNAPSHOT" -f "$script"
-			else
-				printf "  ⚠️  Skipping missing script: %s\n" "$script"
-			fi
-		done
-
-		printf "\n🔄 Generating new changelog...\n"
+		echo "🔄 Generating diff changelog..."
 		CHANGELOG_FILE=$CURRENT_CHANGELOG
 		
 		if [ "$CHANGELOG_FORMAT" = "xml" ]; then
+			LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
+			LIQUIBASE_COMMAND_REFERENCE_URL="jdbc:postgresql://$REF_DB_HOST:5432/$REF_DB_NAME" \
 			liquibase diff-changelog --changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" --format=xml --include-schema=true --include-tablespace=true --include-catalog=true --include-objects="columns, foreignkeys, indexes, primarykeys, tables, uniqueconstraints, views, functions, triggers, sequences"
 			include_changelog_if_valid "$CHANGELOG_FILE"
 			
-			printf "\n🔧 Adding rollback statements to XML changelog...\n"
+			echo "🔧 Adding rollback statements to XML changelog..."
 			python3 rollback-xml.py "$CHANGELOG_DIR/$CHANGELOG_FILE"
 		else
+			LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
+			LIQUIBASE_COMMAND_REFERENCE_URL="jdbc:postgresql://$REF_DB_HOST:5432/$REF_DB_NAME" \
 			liquibase diff-changelog --changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" --include-schema=true --include-tablespace=true --include-catalog=true --include-objects="columns, foreignkeys, indexes, primarykeys, tables, uniqueconstraints, views, functions, triggers, sequences"
 			include_changelog_if_valid "$CHANGELOG_FILE"
 			
 			if [ -f "$CHANGELOG_DIR/$CHANGELOG_FILE" ]; then
-				printf "\n🔧 Adding comprehensive rollback statements to SQL changelog...\n"
+				echo "🔧 Adding comprehensive rollback statements to SQL changelog..."
 				python3 rollback-sql.py "$CHANGELOG_DIR/$CHANGELOG_FILE"
 			else
-				printf "\n⚠️  No changelog file generated - skipping rollback statement addition\n"
+				echo "⚠️  No changelog file generated - skipping rollback statement addition"
 			fi
 			
 			if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
-				printf "\n🔧 Adding rollback statements to existing initial changelog...\n"
+				echo "🔧 Adding rollback statements to existing initial changelog..."
 				python3 rollback-sql.py "$CHANGELOG_DIR/$INIT_CHANGELOG"
 			fi
 		fi
 
-		DROP_DB=true
 		printf "\n✅ Liquibase migration ready!\n"
 	fi
 
 	if [ "$RUN_UPDATE" = true ]; then
-		run_init_sql_scripts
-		printf "\n🚀 Applying database changes...\n"
-		if liquibase update; then
+		echo "🚀 Applying database changes..."
+		LIQUIBASE_COMMAND_URL="jdbc:postgresql://$MAIN_DB_HOST:5432/$MAIN_DB_NAME" \
+			liquibase update
+		if [ $? -eq 0 ]; then
 			printf "\n✅ Liquibase migration complete!\n"
 		else
 			printf "\n⚠️ Liquibase update failed — attempting changelogSync instead...\n"
@@ -440,6 +516,7 @@ main() {
 			fi
 		fi
 		DROP_DB=true
+
 	fi
 
 	# Handle rollback operations
@@ -473,7 +550,7 @@ main() {
 
 	if [ "$DROP_DB" = true ]; then
 		printf "\n🧹 Cleaning up: Dropping temporary database...\n"
-		PGPASSWORD="$LIQ_DB_PASSWORD" psql -h "$LIQ_DB_HOST" -U "$LIQ_DB_USER" -d postgres -c "DROP DATABASE IF EXISTS $LIQ_DB_SNAPSHOT;"
+		PGPASSWORD="$REF_DB_PASSWORD" psql -h "$REF_DB_HOST" -U "$REF_DB_USER" -c "DROP DATABASE IF EXISTS $REF_DB_NAME;"
 	fi
 }
 

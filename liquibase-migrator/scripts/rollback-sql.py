@@ -391,16 +391,21 @@ def process_changelog(filename):
 
     output_lines = []
     i = 0
+    added_rollbacks = 0
+    skipped_rollbacks = 0
+    total_changesets = 0
 
     while i < len(lines):
         line = lines[i]
         output_lines.append(line)
 
         if re.match(r"^\s*--\s+changeset", line):
+            total_changesets += 1
             j = i + 1
             sql_lines = []
             has_rollback = False
 
+            # First pass: collect SQL lines and check for existing rollback
             while j < len(lines):
                 next_line = lines[j]
 
@@ -412,26 +417,43 @@ def process_changelog(filename):
 
                 if re.match(r"^\s*--\s*rollback", next_line):
                     has_rollback = True
-                    # Skip duplicate rollback statements
-                    if not any("rollback" in line for line in output_lines[-5:]):
-                        output_lines.append(next_line)
-                    j += 1
-                    continue
+                    break
 
                 if not re.match(r"^\s*--", next_line) and next_line.strip():
                     sql_lines.append(next_line.strip())
 
+                j += 1
+
+            # Second pass: add all lines including existing rollback
+            j = i + 1
+            while j < len(lines):
+                next_line = lines[j]
+
+                if (
+                    re.match(r"^\s*--\s+changeset", next_line)
+                    or next_line.strip() == ""
+                ):
+                    break
+
                 output_lines.append(next_line)
                 j += 1
 
+            # Only add rollback if we have SQL and no existing rollback
             if sql_lines and not has_rollback:
                 sql = " ".join(sql_lines)
                 rollback_sql = generate_rollback(sql)
                 output_lines.append(f"-- rollback {rollback_sql}\n")
+                added_rollbacks += 1
+            elif has_rollback:
+                skipped_rollbacks += 1
 
             i = j
         else:
             i += 1
+
+    print(f"📊 Processed {total_changesets} changesets:")
+    print(f"   ✅ Added rollbacks to {added_rollbacks} changesets")
+    print(f"   ⏭️  Skipped {skipped_rollbacks} changesets (already have rollbacks)")
 
     with open(filename, "w") as f:
         f.writelines(output_lines)

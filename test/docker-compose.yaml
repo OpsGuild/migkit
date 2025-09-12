@@ -24,12 +24,19 @@ services:
     depends_on:
       postgres-test:
         condition: service_healthy
+    restart: "no"
     environment:
-      LIQ_DB_HOST: postgres-test
-      LIQ_DB_USER: testuser
-      LIQ_DB_PASSWORD: testpass
-      LIQ_DB_NAME: testdb
-      LIQ_DB_SNAPSHOT: testdb_tmp
+      # Main DB
+      MAIN_DB_HOST: postgres-test
+      MAIN_DB_USER: testuser
+      MAIN_DB_PASSWORD: testpass
+      MAIN_DB_NAME: testdb
+
+      REF_DB_HOST: postgres-test
+      REF_DB_USER: testuser
+      REF_DB_PASSWORD: testpass
+      REF_DB_NAME: testdb_ref
+
       CHANGELOG_FORMAT: sql
       SCHEMA_SCRIPTS: /liquibase/schema/00-init-db.sql,/liquibase/schema/01-init-data.sql,/liquibase/schema/02-triggers.sql 
       # Liquibase standard environment variables
@@ -45,6 +52,11 @@ services:
       - ./liquibase.properties:/liquibase/liquibase.properties:ro
       - ./changelog:/liquibase/changelog
     command: ["--init"]
+    # Default command can be overridden when running
+    # Examples:
+    # --init
+    # --generate
+    # --update
 
 volumes:
   pgdata-test:

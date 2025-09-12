@@ -136,11 +136,16 @@ def process_xml_changelog(filename):
         ".//{http://www.liquibase.org/xml/ns/dbchangelog}changeSet"
     )
 
+    added_rollbacks = 0
+    skipped_rollbacks = 0
+
     for changeset in changesets:
+        # Check for existing rollback element
         existing_rollback = changeset.find(
             "{http://www.liquibase.org/xml/ns/dbchangelog}rollback"
         )
         if existing_rollback is not None:
+            skipped_rollbacks += 1
             continue
 
         rollback_elements = generate_rollback_for_changeset(changeset)
@@ -154,6 +159,11 @@ def process_xml_changelog(filename):
                 rollback.append(element)
 
             changeset.append(rollback)
+            added_rollbacks += 1
+
+    print(f"📊 Processed {len(changesets)} changesets:")
+    print(f"   ✅ Added rollbacks to {added_rollbacks} changesets")
+    print(f"   ⏭️  Skipped {skipped_rollbacks} changesets (already have rollbacks)")
 
     try:
         ET.indent(tree, space="  ", level=0)
