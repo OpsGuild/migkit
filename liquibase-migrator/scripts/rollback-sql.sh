@@ -19,25 +19,25 @@ extract_table_name() {
     
     # CREATE TABLE
     if echo "$sql_upper" | grep -q "^CREATE TABLE"; then
-        echo "$sql" | sed -n 's/.*CREATE[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:](]*\)"*.*/\1.\2/p' | head -1
+        echo "$sql" | sed -n 's/.*CREATE[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:](]*\)"*.*/\2/p' | head -1
     # ALTER TABLE
     elif echo "$sql_upper" | grep -q "^ALTER TABLE"; then
-        echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1
+        echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1
     # DROP TABLE
     elif echo "$sql_upper" | grep -q "^DROP TABLE"; then
-        echo "$sql" | sed -n 's/.*DROP[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1
+        echo "$sql" | sed -n 's/.*DROP[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1
     # TRUNCATE TABLE
     elif echo "$sql_upper" | grep -q "^TRUNCATE TABLE"; then
-        echo "$sql" | sed -n 's/.*TRUNCATE[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1
+        echo "$sql" | sed -n 's/.*TRUNCATE[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1
     # INSERT INTO
     elif echo "$sql_upper" | grep -q "^INSERT INTO"; then
-        echo "$sql" | sed -n 's/.*INSERT[[:space:]]\+INTO[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1
+        echo "$sql" | sed -n 's/.*INSERT[[:space:]]\+INTO[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1
     # UPDATE
     elif echo "$sql_upper" | grep -q "^UPDATE"; then
-        echo "$sql" | sed -n 's/.*UPDATE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1
+        echo "$sql" | sed -n 's/.*UPDATE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1
     # DELETE FROM
     elif echo "$sql_upper" | grep -q "^DELETE FROM"; then
-        echo "$sql" | sed -n 's/.*DELETE[[:space:]]\+FROM[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1
+        echo "$sql" | sed -n 's/.*DELETE[[:space:]]\+FROM[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1
     fi
 }
 
@@ -47,23 +47,23 @@ extract_column_info() {
     local sql_upper=$(echo "$sql" | tr '[:lower:]' '[:upper:]' | tr -s ' ')
     
     # ADD COLUMN
-    if echo "$sql_upper" | grep -q "ADD.*COLUMN\|ADD[[:space:]]\+[A-Z\"']"; then
-        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1)
-        local column=$(echo "$sql" | sed -n 's/.*ADD[[:space:]]\+[A-Z]*[[:space:]]*"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
+    if echo "$sql_upper" | grep -q "ADD.*COLUMN"; then
+        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1)
+        local column=$(echo "$sql" | sed -n 's/.*ADD[[:space:]]\+COLUMN[[:space:]]\+"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
         echo "${table}|${column}"
     # DROP COLUMN
     elif echo "$sql_upper" | grep -q "DROP COLUMN"; then
-        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1)
+        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1)
         local column=$(echo "$sql" | sed -n 's/.*DROP[[:space:]]\+COLUMN[[:space:]]\+"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
         echo "${table}|${column}"
     # ALTER COLUMN
     elif echo "$sql_upper" | grep -q "ALTER COLUMN"; then
-        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1)
+        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1)
         local column=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+COLUMN[[:space:]]\+"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
         echo "${table}|${column}"
     # RENAME COLUMN
     elif echo "$sql_upper" | grep -q "RENAME COLUMN"; then
-        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1)
+        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1)
         local column=$(echo "$sql" | sed -n 's/.*RENAME[[:space:]]\+COLUMN[[:space:]]\+"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
         echo "${table}|${column}"
     fi
@@ -76,21 +76,21 @@ extract_constraint_info() {
     
     # ADD CONSTRAINT
     if echo "$sql_upper" | grep -q "ADD CONSTRAINT"; then
-        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1)
+        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1)
         local constraint=$(echo "$sql" | sed -n 's/.*ADD[[:space:]]\+CONSTRAINT[[:space:]]\+"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
         echo "${table}|${constraint}"
     # DROP CONSTRAINT
     elif echo "$sql_upper" | grep -q "DROP CONSTRAINT"; then
-        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1)
+        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1)
         local constraint=$(echo "$sql" | sed -n 's/.*DROP[[:space:]]\+CONSTRAINT[[:space:]]\+"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
         echo "${table}|${constraint}"
     # ADD PRIMARY KEY
     elif echo "$sql_upper" | grep -q "ADD PRIMARY KEY"; then
-        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1)
+        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1)
         echo "${table}|PRIMARY_KEY"
     # DROP PRIMARY KEY
     elif echo "$sql_upper" | grep -q "DROP PRIMARY KEY"; then
-        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1)
+        local table=$(echo "$sql" | sed -n 's/.*ALTER[[:space:]]\+TABLE[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1)
         echo "${table}|PRIMARY_KEY"
     fi
 }
@@ -103,7 +103,7 @@ extract_index_info() {
     # CREATE INDEX
     if echo "$sql_upper" | grep -q "CREATE.*INDEX"; then
         local index=$(echo "$sql" | sed -n 's/.*CREATE[[:space:]]\+.*INDEX[[:space:]]\+"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
-        local table=$(echo "$sql" | sed -n 's/.*ON[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\1.\2/p' | head -1)
+        local table=$(echo "$sql" | sed -n 's/.*ON[[:space:]]\+"*\([^"[:space:]]*\)"*\.*"*\([^"[:space:]]*\)"*.*/\2/p' | head -1)
         echo "${index}|${table}"
     # DROP INDEX
     elif echo "$sql_upper" | grep -q "DROP INDEX"; then
@@ -120,8 +120,7 @@ generate_rollback() {
     if echo "$sql_upper" | grep -q "^CREATE[[:space:]]\+TABLE"; then
         local table_name=$(extract_table_name "$sql")
         if [[ -n "$table_name" ]]; then
-            # Clean up table name format
-            table_name=$(echo "$table_name" | sed 's/^\.//' | sed 's/^/"/' | sed 's/\./"./')
+            # Clean up table name format - just quote if not already quoted
             if [[ ! "$table_name" =~ \".*\" ]]; then
                 table_name="\"$table_name\""
             fi
@@ -136,18 +135,39 @@ generate_rollback() {
         else
             echo "-- Empty rollback (manual intervention required)"
         fi
-    elif echo "$sql_upper" | grep -q "ALTER[[:space:]]\+TABLE.*ADD.*COLUMN\|ALTER[[:space:]]\+TABLE.*ADD[[:space:]]\+[A-Z\"']"; then
+    elif echo "$sql_upper" | grep -q "ALTER[[:space:]]\+TABLE.*ADD.*COLUMN"; then
         local column_info=$(extract_column_info "$sql")
         local table_name=$(echo "$column_info" | cut -d'|' -f1)
         local column_name=$(echo "$column_info" | cut -d'|' -f2)
         if [[ -n "$table_name" && -n "$column_name" ]]; then
-            # Clean up names
-            table_name=$(echo "$table_name" | sed 's/^\.//' | sed 's/^/"/' | sed 's/\./"./')
+            # Clean up names - just quote if not already quoted
             if [[ ! "$table_name" =~ \".*\" ]]; then
                 table_name="\"$table_name\""
             fi
-            column_name="\"$column_name\""
+            if [[ ! "$column_name" =~ \".*\" ]]; then
+                column_name="\"$column_name\""
+            fi
             echo "ALTER TABLE $table_name DROP COLUMN IF EXISTS $column_name;"
+        else
+            echo "-- Empty rollback (manual intervention required)"
+        fi
+    elif echo "$sql_upper" | grep -q "ALTER[[:space:]]\+TABLE.*ADD.*UNIQUE"; then
+        local table_name=$(extract_table_name "$sql")
+        local constraint_name=$(echo "$sql" | sed -n 's/.*ADD[[:space:]]\+CONSTRAINT[[:space:]]\+"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
+        if [[ -z "$constraint_name" ]]; then
+            # If no explicit constraint name, generate one based on table and column
+            local column=$(echo "$sql" | sed -n 's/.*UNIQUE[[:space:]]*([[:space:]]*"*\([^"[:space:]]*\)"*[[:space:]]*).*/\1/p' | head -1)
+            constraint_name="${table_name}_${column}_key"
+        fi
+        if [[ -n "$table_name" && -n "$constraint_name" ]]; then
+            # Clean up names - just quote if not already quoted
+            if [[ ! "$table_name" =~ \".*\" ]]; then
+                table_name="\"$table_name\""
+            fi
+            if [[ ! "$constraint_name" =~ \".*\" ]]; then
+                constraint_name="\"$constraint_name\""
+            fi
+            echo "ALTER TABLE $table_name DROP CONSTRAINT IF EXISTS $constraint_name;"
         else
             echo "-- Empty rollback (manual intervention required)"
         fi
@@ -165,12 +185,33 @@ generate_rollback() {
         local table_name=$(echo "$constraint_info" | cut -d'|' -f1)
         local constraint_name=$(echo "$constraint_info" | cut -d'|' -f2)
         if [[ -n "$table_name" && -n "$constraint_name" ]]; then
-            # Clean up names
-            table_name=$(echo "$table_name" | sed 's/^\.//' | sed 's/^/"/' | sed 's/\./"./')
+            # Clean up names - just quote if not already quoted
             if [[ ! "$table_name" =~ \".*\" ]]; then
                 table_name="\"$table_name\""
             fi
-            constraint_name="\"$constraint_name\""
+            if [[ ! "$constraint_name" =~ \".*\" ]]; then
+                constraint_name="\"$constraint_name\""
+            fi
+            echo "ALTER TABLE $table_name DROP CONSTRAINT IF EXISTS $constraint_name;"
+        else
+            echo "-- Empty rollback (manual intervention required)"
+        fi
+    elif echo "$sql_upper" | grep -q "ALTER[[:space:]]\+TABLE.*ADD.*UNIQUE"; then
+        local table_name=$(extract_table_name "$sql")
+        local constraint_name=$(echo "$sql" | sed -n 's/.*ADD[[:space:]]\+CONSTRAINT[[:space:]]\+"*\([^"[:space:]]*\)"*.*/\1/p' | head -1)
+        if [[ -z "$constraint_name" ]]; then
+            # If no explicit constraint name, generate one based on table and column
+            local column=$(echo "$sql" | sed -n 's/.*UNIQUE[[:space:]]*([[:space:]]*"*\([^"[:space:]]*\)"*[[:space:]]*).*/\1/p' | head -1)
+            constraint_name="${table_name}_${column}_key"
+        fi
+        if [[ -n "$table_name" && -n "$constraint_name" ]]; then
+            # Clean up names - just quote if not already quoted
+            if [[ ! "$table_name" =~ \".*\" ]]; then
+                table_name="\"$table_name\""
+            fi
+            if [[ ! "$constraint_name" =~ \".*\" ]]; then
+                constraint_name="\"$constraint_name\""
+            fi
             echo "ALTER TABLE $table_name DROP CONSTRAINT IF EXISTS $constraint_name;"
         else
             echo "-- Empty rollback (manual intervention required)"
@@ -187,8 +228,7 @@ generate_rollback() {
     elif echo "$sql_upper" | grep -q "ALTER[[:space:]]\+TABLE.*ADD.*PRIMARY.*KEY"; then
         local table_name=$(extract_table_name "$sql")
         if [[ -n "$table_name" ]]; then
-            # Clean up table name
-            table_name=$(echo "$table_name" | sed 's/^\.//' | sed 's/^/"/' | sed 's/\./"./')
+            # Clean up table name - just quote if not already quoted
             if [[ ! "$table_name" =~ \".*\" ]]; then
                 table_name="\"$table_name\""
             fi
@@ -209,12 +249,13 @@ generate_rollback() {
         local table_name=$(echo "$column_info" | cut -d'|' -f1)
         local column_name=$(echo "$column_info" | cut -d'|' -f2)
         if [[ -n "$table_name" && -n "$column_name" ]]; then
-            # Clean up names
-            table_name=$(echo "$table_name" | sed 's/^\.//' | sed 's/^/"/' | sed 's/\./"./')
+            # Clean up names - just quote if not already quoted
             if [[ ! "$table_name" =~ \".*\" ]]; then
                 table_name="\"$table_name\""
             fi
-            column_name="\"$column_name\""
+            if [[ ! "$column_name" =~ \".*\" ]]; then
+                column_name="\"$column_name\""
+            fi
             echo "ALTER TABLE $table_name ALTER COLUMN $column_name DROP DEFAULT;"
         else
             echo "-- Empty rollback (manual intervention required)"

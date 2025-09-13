@@ -230,7 +230,12 @@ rollback_to_date() {
 	local target_date=$1
 	echo "🔄 Rolling back to date: $target_date"
 	
-	if liquibase rollbackDate "$target_date"; then
+	# Convert date to ISO format with time if only date is provided
+	if [[ "$target_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+		target_date="${target_date}T00:00:00"
+	fi
+	
+	if liquibase rollback-to-date "$target_date"; then
 		echo "✅ Rollback to date successful!"
 		show_rollback_status
 		return 0
@@ -244,7 +249,7 @@ rollback_to_changeset() {
 	local changeset_id=$1
 	echo "🔄 Rolling back to changeset: $changeset_id"
 	
-	if liquibase rollback "$changeset_id"; then
+	if liquibase rollback-one-changeset "$changeset_id"; then
 		echo "✅ Rollback to changeset successful!"
 		show_rollback_status
 		return 0
@@ -258,7 +263,7 @@ rollback_to_tag() {
 	local tag=$1
 	echo "🔄 Rolling back to tag: $tag"
 	
-	if liquibase rollbackTag "$tag"; then
+	if liquibase rollback-to-tag "$tag"; then
 		echo "✅ Rollback to tag successful!"
 		show_rollback_status
 		return 0
@@ -287,18 +292,22 @@ show_help() {
 	echo "Usage: $0 [OPTIONS]"
 	echo ""
 	echo "Migration Options:"
-	echo "  -g, --generate          Generate new changelog only (don't apply)"
-	echo "  -u, --update            Apply migrations only (don't generate)"
-	echo "  --init                  Initialize database with initial changelog"
-	echo "  --clean                 Clean up temporary database"
+	echo "  -g, --generate, generate          Generate new changelog only (don't apply)"
+	echo "  -u, --update, update              Apply migrations only (don't generate)"
+	echo "  -i, --init, init                  Initialize database with initial changelog"
+	echo "  -a, --generate-and-update, generate-and-update  Generate and apply changelog"
+	echo "  -c, --clean, clean                Clean up temporary database"
 	echo ""
 	echo "Rollback Options:"
-	echo "  -r, --rollback COUNT    Rollback COUNT changesets"
-	echo "  --rollback-to-date DATE Rollback to specific date (YYYY-MM-DD)"
-	echo "  --rollback-to-changeset ID Rollback to specific changeset ID"
-	echo "  --rollback-to-tag TAG   Rollback to specific tag"
-	echo "  --rollback-all          Rollback all changes"
-	echo "  --status                Show current database status"
+	echo "  -r, --rollback, rollback COUNT    Rollback COUNT changesets"
+	echo "  -rtd, --rollback-to-date, rollback-to-date DATE Rollback to specific date (YYYY-MM-DD)"
+	echo "  -rtc, --rollback-to-changeset, rollback-to-changeset ID Rollback to specific changeset ID"
+	echo "  -rtt, --rollback-to-tag, rollback-to-tag TAG   Rollback to specific tag"
+	echo "  -ra, --rollback-all, rollback-all Rollback all changes"
+	echo "  -s, --status, status              Show current database status"
+	echo ""
+	echo "Direct Liquibase Access:"
+	echo "  liquibase [LIQUIBASE_COMMAND]     Run Liquibase commands directly"
 	echo ""
 	echo "Environment Variables:"
 	echo "  MAIN_DB_TYPE           Main database type (postgresql, mysql, oracle, sqlserver, h2)"
@@ -320,11 +329,14 @@ show_help() {
 	echo "  REFERENCE_SCHEMA       Single schema script override"
 	echo ""
 	echo "Examples:"
-	echo "  $0 --generate                    # Generate new changelog"
-	echo "  $0 --update                      # Apply pending migrations"
-	echo "  $0 --rollback 2                  # Rollback last 2 changesets"
-	echo "  $0 --rollback-to-date 2024-01-01 # Rollback to specific date"
-	echo "  $0 --status                      # Show current status"
+	echo "  $0 generate                        # Generate new changelog (no dashes)"
+	echo "  $0 --generate                      # Generate new changelog (with dashes)"
+	echo "  $0 update                          # Apply pending migrations"
+	echo "  $0 rollback 2                      # Rollback last 2 changesets"
+	echo "  $0 rollback-to-date 2024-01-01     # Rollback to specific date"
+	echo "  $0 status                          # Show current status"
+	echo "  $0 liquibase --help                # Run Liquibase help directly"
+	echo "  $0 liquibase status                # Run Liquibase status directly"
 }
 
 include_changelog_if_valid() {
@@ -374,79 +386,85 @@ include_changelog_if_valid() {
 parse_arguments() {
 	while [[ $# -gt 0 ]]; do
 		case $1 in
-			-g | --generate)
+			-g | --generate | generate)
 				RUN_UPDATE=false
 				DROP_DB=true
 				shift
 				;;
-			-u | --update)
+			-u | --update | update)
 				RUN_GENERATE=false
 				DROP_DB=true
 				shift
 				;;
-			-i | --init)
+			-i | --init | init)
 				INIT=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				DROP_DB=true
 				shift
 				;;
-			-a | --generate-and-update)
+			-a | --generate-and-update | generate-and-update)
 				RUN_GENERATE=true
 				RUN_UPDATE=true
 				DROP_DB=true
 				shift
 				;;
-			-c | --clean)
+			-c | --clean | clean)
 				DROP_DB=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				shift
 				;;
-			-r | --rollback)
+			-r | --rollback | rollback)
 				ROLLBACK_MODE=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				ROLLBACK_COUNT="$2"
 				shift 2
 				;;
-			-rtd | --rollback-to-date)
+			-rtd | --rollback-to-date | rollback-to-date)
 				ROLLBACK_MODE=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				ROLLBACK_TO_DATE="$2"
 				shift 2
 				;;
-			-rtc | --rollback-to-changeset)
+			-rtc | --rollback-to-changeset | rollback-to-changeset)
 				ROLLBACK_MODE=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				ROLLBACK_TO_CHANGESET="$2"
 				shift 2
 				;;
-			-rtt | --rollback-to-tag)
+			-rtt | --rollback-to-tag | rollback-to-tag)
 				ROLLBACK_MODE=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				ROLLBACK_TO_TAG="$2"
 				shift 2
 				;;
-			-ra | --rollback-all)
+			-ra | --rollback-all | rollback-all)
 				ROLLBACK_MODE=true
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				ROLLBACK_COUNT="all"
 				shift
 				;;
-			-s | --status)
+			-s | --status | status)
 				RUN_GENERATE=false
 				RUN_UPDATE=false
 				show_rollback_status
 				exit 0
 				;;
-			-h | --help)
+			-h | --help | help)
 				show_help
 				exit 0
+				;;
+			liquibase)
+				# Pass through to Liquibase directly
+				shift
+				echo "🚀 Running Liquibase command directly..."
+				exec liquibase "$@"
 				;;
 			bash)
 				echo "🐚 Starting bash shell..."

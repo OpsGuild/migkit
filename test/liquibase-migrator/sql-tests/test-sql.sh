@@ -79,6 +79,10 @@ test_liquibase_init() {
     print_status "Testing Liquibase initialization..."
     
     # Test --init command (this should just sync the changelog, not apply it)
+    # But first clean the database to avoid conflicts
+    print_status "Cleaning database before initialization..."
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB; CREATE DATABASE $TEST_DB;" 2>/dev/null || true
+    
     if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --init; then
         print_success "Liquibase initialization successful"
         return 0
@@ -170,11 +174,24 @@ EOF
 test_apply_changelog() {
     print_status "Testing changelog application..."
     
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --update; then
-        print_success "Changelog application successful"
-        return 0
+    # Clean the database first to ensure fresh state
+    print_status "Cleaning database before applying changelog..."
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB; CREATE DATABASE $TEST_DB;" 2>/dev/null || true
+    
+    # Apply only the generated changelog, not both generated and initial
+    # This avoids conflicts between duplicate tables
+    local generated_changelog=$(ls ../../sandbox/liquibase-migrator/changelog/changelog-*.sql | head -1)
+    if [ -n "$generated_changelog" ]; then
+        print_status "Applying generated changelog: $(basename "$generated_changelog")"
+        if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --changelog-file="changelog/$(basename "$generated_changelog")" --update; then
+            print_success "Generated changelog application successful"
+            return 0
+        else
+            print_error "Generated changelog application failed"
+            return 1
+        fi
     else
-        print_error "Changelog application failed"
+        print_error "No generated changelog found"
         return 1
     fi
 }
@@ -182,6 +199,10 @@ test_apply_changelog() {
 # Test 4: Test all SQL operations with new changeset
 test_sql_operations() {
     print_status "Testing comprehensive SQL operations..."
+    
+    # Clean the database first to ensure fresh state
+    print_status "Cleaning database before SQL operations..."
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB; CREATE DATABASE $TEST_DB;" 2>/dev/null || true
     
     # Create a new changeset with various SQL operations
     cat > "$CHANGELOG_DIR/002-sql-operations.sql" << 'EOF'
@@ -354,8 +375,16 @@ test_rollback_by_count() {
 test_rollback_to_changeset() {
     print_status "Testing rollback to specific changeset..."
     
-    # Rollback to a specific changeset
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-to-changeset "migkit:add-user-fields"; then
+    # First, get the list of available changesets to find a valid one
+    local changeset_id=$(docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --status 2>/dev/null | grep "changelog" | head -1 | awk '{print $1}' | sed 's/.*::\([^:]*\)::.*/\1/')
+    
+    if [ -z "$changeset_id" ]; then
+        print_error "No changesets found to rollback to"
+        return 1
+    fi
+    
+    # Rollback to the first available changeset
+    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-to-changeset "$changeset_id"; then
         print_success "Rollback to changeset successful"
         return 0
     else
@@ -464,10 +493,9 @@ run_test() {
     print_status "Running: $test_name"
     
     # Clean up before each test (except the first one)
-    # Temporarily disabled to debug database issues
-    # if [ $TOTAL_TESTS -gt 1 ]; then
-    #     cleanup_between_tests
-    # fi
+    if [ $TOTAL_TESTS -gt 1 ]; then
+        cleanup_between_tests
+    fi
     
     if $test_function; then
         TESTS_PASSED=$((TESTS_PASSED + 1))

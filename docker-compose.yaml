@@ -1,4 +1,5 @@
 services:
+  # PostgreSQL Test Database
   postgres-test:
     image: postgres:16
     container_name: postgres-test
@@ -12,6 +13,57 @@ services:
       - pgdata-test:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # MySQL Test Database
+  mysql-test:
+    image: mysql:8.0
+    container_name: mysql-test
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpass
+      MYSQL_DATABASE: testdb
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysqldata-test:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "testuser", "-ptestpass"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # SQLite Test Database (using Alpine with SQLite)
+  sqlite-test:
+    image: alpine:latest
+    container_name: sqlite-test
+    volumes:
+      - sqlitedata-test:/data
+    command: ["sh", "-c", "apk add --no-cache sqlite && tail -f /dev/null"]
+    healthcheck:
+      test: ["CMD", "sqlite3", "--version"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # MariaDB Test Database
+  mariadb-test:
+    image: mariadb:10.11
+    container_name: mariadb-test
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpass
+      MARIADB_USER: testuser
+      MARIADB_PASSWORD: testpass
+      MARIADB_DATABASE: testdb
+    ports:
+      - "3308:3306"
+    volumes:
+      - mariadbdata-test:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "testuser", "-ptestpass"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -57,3 +109,6 @@ services:
 
 volumes:
   pgdata-test:
+  mysqldata-test:
+  sqlitedata-test:
+  mariadbdata-test:

@@ -76,8 +76,8 @@ run_test() {
 }
 
 # Run all test scripts
-run_test "SQL Migration Tests" "test-sql.sh"
-run_test "XML Migration Tests" "test-xml.sh"
+run_test "SQL Migration Tests" "sql-tests/test-sql.sh"
+run_test "XML Migration Tests" "xml-tests/test-xml.sh"
 
 # Print summary
 print_header "Test Summary"

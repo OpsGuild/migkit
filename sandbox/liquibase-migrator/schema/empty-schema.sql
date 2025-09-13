@@ -1,0 +1,2 @@
+-- Empty schema for testing edge cases
+-- This file contains no schema definitions to test empty migration scenarios
