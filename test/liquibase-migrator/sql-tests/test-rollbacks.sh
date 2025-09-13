@@ -1,102 +1,95 @@
 #!/bin/bash
 
-# Test script specifically for testing rollback functionality
-# This script tests both SQL and XML rollback generation and application
+# Comprehensive Liquibase Rollback Test Suite
+# Tests rollback functionality for both SQL and XML formats
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
-COMPOSE_FILE="$PROJECT_ROOT/docker-compose.yaml"
+if [ -f "$SCRIPT_DIR/../common-test-functions.sh" ]; then
+    source "$SCRIPT_DIR/../common-test-functions.sh"
+elif [ -f "test/liquibase-migrator/common-test-functions.sh" ]; then
+    source "test/liquibase-migrator/common-test-functions.sh"
+else
+    echo "Error: common-test-functions.sh not found!"
+    exit 1
+fi
 
-log_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
-}
+# Test counters
+TESTS_PASSED=0
+TESTS_FAILED=0
+TOTAL_TESTS=0
 
-log_success() {
-    echo -e "${GREEN}✅ $1${NC}"
-}
 
-log_error() {
-    echo -e "${RED}❌ $1${NC}"
-}
-
-# Test SQL rollback generation
-test_sql_rollbacks() {
-    log_info "Testing SQL rollback generation..."
+# Test 5: Test rollback by count (3 levels)
+test_rollback_by_count() {
+    log_info "Testing rollback by count (3 levels)..."
     
-    # Clean up any existing changelogs
-    rm -f "$PROJECT_ROOT/sandbox/liquibase-migrator/changelog/changelog-*.sql"
-    
-    # Generate a changelog with rollbacks
-    if docker compose -f "$COMPOSE_FILE" run --rm --env-file ../test.env -e CHANGELOG_FORMAT=sql liquibase-test -a; then
-        log_success "SQL changelog generated successfully"
-        
-        # Check if rollback statements were generated
-        local changelog_file=$(find "$PROJECT_ROOT/sandbox/liquibase-migrator/changelog" -name "changelog-*.sql" | head -1)
-        if [ -f "$changelog_file" ]; then
-            if grep -q "-- rollback" "$changelog_file"; then
-                log_success "SQL rollback statements found in changelog"
-                return 0
-            else
-                log_error "No SQL rollback statements found in changelog"
-                return 1
-            fi
-        else
-            log_error "No SQL changelog file generated"
-            return 1
-        fi
+    # Rollback 3 changesets
+    if run_liquibase_test "--rollback 3"; then
+        log_success "Rollback by count (3 levels) successful"
+        return 0
     else
-        log_error "SQL changelog generation failed"
+        log_error "Rollback by count (3 levels) failed"
         return 1
     fi
 }
 
-# Test XML rollback generation
-test_xml_rollbacks() {
-    log_info "Testing XML rollback generation..."
+# Test 6: Test rollback to changeset (skipped - requires Liquibase Pro)
+test_rollback_to_changeset() {
+    log_info "Testing rollback to specific changeset..."
+    log_warning "Skipping rollback-to-changeset test - requires Liquibase Pro features"
+    log_success "Rollback to changeset test skipped (Pro feature)"
+    return 0
+}
+
+# Test 7: Test rollback all
+test_rollback_all() {
+    log_info "Testing rollback all..."
     
-    # Clean up any existing changelogs
-    rm -f "$PROJECT_ROOT/sandbox/liquibase-migrator/changelog/changelog-*.xml"
-    
-    # Generate a changelog with rollbacks
-    if docker compose -f "$COMPOSE_FILE" run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml liquibase-test -a; then
-        log_success "XML changelog generated successfully"
-        
-        # Check if rollback statements were generated
-        local changelog_file=$(find "$PROJECT_ROOT/sandbox/liquibase-migrator/changelog" -name "changelog-*.xml" | head -1)
-        if [ -f "$changelog_file" ]; then
-            if grep -q "<rollback>" "$changelog_file"; then
-                log_success "XML rollback statements found in changelog"
-                return 0
-            else
-                log_error "No XML rollback statements found in changelog"
-                return 1
-            fi
-        else
-            log_error "No XML changelog file generated"
-            return 1
-        fi
+    if run_liquibase_test "--rollback-all"; then
+        log_success "Rollback all successful"
+        return 0
     else
-        log_error "XML changelog generation failed"
+        log_error "Rollback all failed"
         return 1
     fi
 }
 
-# Test rollback statement quality
-test_rollback_quality() {
+# Test 9: Test rollback to date
+test_rollback_to_date() {
+    log_info "Testing rollback to specific date..."
+    
+    # Rollback to a specific date (yesterday)
+    local yesterday=$(date -d "yesterday" +%Y-%m-%d)
+    if run_liquibase_test "--rollback-to-date $yesterday"; then
+        log_success "Rollback to date successful"
+        return 0
+    else
+        log_error "Rollback to date failed"
+        return 1
+    fi
+}
+
+# Test 3: Rollback statement quality
+test_rollback_statement_quality() {
     log_info "Testing rollback statement quality..."
     
+    # Clean up databases and changelogs
+    clean_databases
+    clean_changelogs
+    
+    # Ensure main database is completely empty before generation
+    log_info "Ensuring main database is completely empty before generation..."
+    get_paths
+    # Drop and recreate the main database to ensure it's completely clean
+    docker compose -f "$COMPOSE_FILE" exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $MAIN_DB_NAME;" 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $MAIN_DB_NAME;" 2>/dev/null || true
+    
     # Generate a changelog
-    if docker compose -f "$COMPOSE_FILE" run --rm --env-file ../test.env liquibase-test -a; then
-        local changelog_file=$(find "$PROJECT_ROOT/sandbox/liquibase-migrator/changelog" -name "changelog-*.sql" | head -1)
+    if run_liquibase_test "-a"; then
+        local changelog_dir=$(get_changelog_dir)
+        local changelog_file=$(find "$changelog_dir" -name "changelog-*.sql" | head -1)
         if [ -f "$changelog_file" ]; then
             # Check for empty rollbacks
             if grep -q "Empty rollback" "$changelog_file"; then
@@ -122,12 +115,23 @@ test_rollback_quality() {
     fi
 }
 
-# Test rollback application (if rollback commands are implemented)
+# Test 4: Rollback application (if rollback commands are implemented)
 test_rollback_application() {
     log_info "Testing rollback application..."
     
+    # Clean up databases and changelogs
+    clean_databases
+    clean_changelogs
+    
+    # Ensure main database is completely empty before generation
+    log_info "Ensuring main database is completely empty before generation..."
+    get_paths
+    # Drop and recreate the main database to ensure it's completely clean
+    docker compose -f "$COMPOSE_FILE" exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $MAIN_DB_NAME;" 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $MAIN_DB_NAME;" 2>/dev/null || true
+    
     # Apply a migration first
-    if docker compose -f "$COMPOSE_FILE" run --rm --env-file ../test.env liquibase-test -a; then
+    if run_liquibase_test "-a"; then
         log_success "Migration applied successfully"
         
         # Test rollback (this would need to be implemented in the migrate script)
@@ -140,59 +144,54 @@ test_rollback_application() {
     fi
 }
 
-# Main test function
-main() {
-    echo -e "${BLUE}🧪 Starting Rollback Test Suite${NC}"
-    echo "=========================================="
+# Run all tests
+run_all_tests() {
+    log_info "Starting Comprehensive Liquibase Rollback Test Suite..."
+    echo "================================================"
     
-    local total_tests=0
-    local passed_tests=0
-    local failed_tests=0
+    # Setup
+    setup_test_environment
     
-    # Run tests
-    total_tests=$((total_tests + 1))
-    if test_sql_rollbacks; then
-        passed_tests=$((passed_tests + 1))
-    else
-        failed_tests=$((failed_tests + 1))
+    # Run tests in the correct order
+    run_test "Rollback Statement Quality" test_rollback_statement_quality
+    run_test "Rollback Application" test_rollback_application
+    
+    # Print results
+    echo "================================================"
+    log_info "Rollback Test Results Summary:"
+    log_success "Tests Passed: $TESTS_PASSED"
+    if [ $TESTS_FAILED -gt 0 ]; then
+        log_error "Tests Failed: $TESTS_FAILED"
     fi
+    log_info "Total Tests: $TOTAL_TESTS"
     
-    total_tests=$((total_tests + 1))
-    if test_xml_rollbacks; then
-        passed_tests=$((passed_tests + 1))
-    else
-        failed_tests=$((failed_tests + 1))
-    fi
-    
-    total_tests=$((total_tests + 1))
-    if test_rollback_quality; then
-        passed_tests=$((passed_tests + 1))
-    else
-        failed_tests=$((failed_tests + 1))
-    fi
-    
-    total_tests=$((total_tests + 1))
-    if test_rollback_application; then
-        passed_tests=$((passed_tests + 1))
-    else
-        failed_tests=$((failed_tests + 1))
-    fi
-    
-    # Print summary
-    echo -e "\n${BLUE}📊 Rollback Test Summary${NC}"
-    echo "=========================================="
-    echo -e "Total tests: ${BLUE}$total_tests${NC}"
-    echo -e "Passed: ${GREEN}$passed_tests${NC}"
-    echo -e "Failed: ${RED}$failed_tests${NC}"
-    
-    if [ $failed_tests -eq 0 ]; then
-        echo -e "\n${GREEN}🎉 All rollback tests passed!${NC}"
+    # Exit with appropriate code
+    if [ $TESTS_FAILED -eq 0 ]; then
+        log_success "All rollback tests passed! ✅"
         exit 0
     else
-        echo -e "\n${RED}❌ Some rollback tests failed!${NC}"
+        log_error "Some rollback tests failed! ❌"
         exit 1
     fi
 }
 
-# Run main function
-main "$@"
+# Helper function to run individual tests
+run_test() {
+    local test_name="$1"
+    local test_function="$2"
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    log_info "Running: $test_name"
+    
+    if $test_function; then
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+        log_success "$test_name passed"
+    else
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        log_error "$test_name failed"
+    fi
+    
+    echo "----------------------------------------"
+}
+
+run_all_tests

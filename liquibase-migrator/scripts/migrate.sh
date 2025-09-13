@@ -6,13 +6,13 @@ set -e
 CHANGELOG_FORMAT=${CHANGELOG_FORMAT:-sql}
 CHANGELOG_DIR=${CHANGELOG_DIR:-/liquibase/changelog}
 SCHEMA_DIR=${SCHEMA_DIR:-/liquibase/schema}
-INIT_CHANGELOG=${INIT_CHANGELOG:-changelog-initial.sql}
-CURRENT_CHANGELOG=changelog-$(date +%Y%m%d-%H%M%S).sql
-
+INIT_CHANGELOG=${INIT_CHANGELOG:-changelog-initial.${CHANGELOG_FORMAT:-sql}}
 if [ "$CHANGELOG_FORMAT" = "sql" ]; then
   MASTER_CHANGELOG=${MASTER_CHANGELOG:-$CHANGELOG_DIR/changelog.json}
+  CURRENT_CHANGELOG=changelog-$(date +%Y%m%d-%H%M%S).sql
 elif [ "$CHANGELOG_FORMAT" = "xml" ]; then
   MASTER_CHANGELOG=${MASTER_CHANGELOG:-$CHANGELOG_DIR/changelog.xml}
+  CURRENT_CHANGELOG=changelog-$(date +%Y%m%d-%H%M%S).xml
 else
   echo "❌ Unsupported CHANGELOG_FORMAT: $CHANGELOG_FORMAT"
   exit 1
@@ -298,7 +298,11 @@ generate_init_changelog() {
             --includeCatalog=true
 
         if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
-            ./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
+            if [ "$CHANGELOG_FORMAT" = "xml" ]; then
+                ./rollback-xml.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
+            else
+                ./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
+            fi
         fi
     else
         echo "⚠️ $INIT_CHANGELOG already exists. Skipping generation."

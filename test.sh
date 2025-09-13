@@ -3,7 +3,7 @@
 # MigKit Test Runner
 # This script runs all migration tests from the test/liquibase-migrator directory
 
-set -e
+# Note: Removed 'set -e' to allow all tests to run even if some fail
 
 # Colors for output
 RED='\033[0;31m'
@@ -149,7 +149,11 @@ run_test() {
 
 # Run all test scripts
 run_test "SQL Migration Tests" "sql-tests/test-sql.sh"
+run_test "SQL Rollback Tests" "sql-tests/test-rollbacks.sh"
 run_test "XML Migration Tests" "xml-tests/test-xml.sh"
+run_test "Scenario Tests with Differences" "scenario-tests/test-with-differences.sh"
+run_test "Multi-Database Tests" "multi-db-tests/test-multi-db.sh"
+run_test "Version Tests" "scenario-tests/version.sh"
 
 # Print summary
 print_header "Test Summary"

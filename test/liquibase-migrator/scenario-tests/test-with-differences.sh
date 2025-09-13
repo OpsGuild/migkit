@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+PROJECT_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 COMPOSE_FILE="$PROJECT_ROOT/docker-compose.yaml"
 
 log_info() {
@@ -26,6 +26,38 @@ log_success() {
 
 log_error() {
     echo -e "${RED}❌ $1${NC}"
+}
+
+log_warning() {
+    echo -e "${YELLOW}⚠️  $1${NC}"
+}
+
+# Function to clean changelogs
+clean_changelogs() {
+    log_info "Cleaning changelogs before running tests..."
+    
+    local changelog_dir="../../sandbox/liquibase-migrator/changelog"
+    
+    mkdir -p "$changelog_dir"
+    
+    find "$changelog_dir" -name "changelog-*.sql" -type f -delete 2>/dev/null || true
+    find "$changelog_dir" -name "changelog-initial.sql" -type f -delete 2>/dev/null || true
+    
+    echo '{"databaseChangeLog": []}' > "$changelog_dir/changelog.json"
+    
+    local remaining_files=$(find "$changelog_dir" -name "*.sql" -type f | wc -l)
+    if [ "$remaining_files" -eq 0 ]; then
+        log_success "Changelogs cleaned - no generated files remain"
+        if grep -q '"databaseChangeLog": \[\]' "$changelog_dir/changelog.json"; then
+            log_success "changelog.json properly reset to empty state"
+        else
+            log_error "changelog.json was not properly reset!"
+            cat "$changelog_dir/changelog.json"
+        fi
+    else
+        log_error "Warning: $remaining_files SQL files still exist after cleanup"
+        find "$changelog_dir" -name "*.sql" -type f
+    fi
 }
 
 # Create a modified schema that will generate differences
@@ -210,6 +242,9 @@ main() {
     local total_tests=0
     local passed_tests=0
     local failed_tests=0
+    
+    # Clean changelogs before starting tests
+    clean_changelogs
     
     # Create modified schema
     create_modified_schema

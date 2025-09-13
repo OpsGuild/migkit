@@ -41,6 +41,43 @@ print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
+print_info() {
+    echo -e "${YELLOW}ℹ️  $1${NC}"
+}
+
+# Function to clean changelogs
+clean_changelogs() {
+    print_info "Cleaning changelogs before running tests..."
+    
+    local changelog_dir="../../sandbox/liquibase-migrator/changelog"
+    
+    mkdir -p "$changelog_dir"
+    
+    find "$changelog_dir" -name "changelog-*.sql" -type f -delete 2>/dev/null || true
+    find "$changelog_dir" -name "changelog-*.xml" -type f -delete 2>/dev/null || true
+    find "$changelog_dir" -name "changelog-initial.sql" -type f -delete 2>/dev/null || true
+    find "$changelog_dir" -name "changelog-initial.xml" -type f -delete 2>/dev/null || true
+    
+    # Always reset the XML master changelog for XML tests
+    echo '<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+</databaseChangeLog>' > "$changelog_dir/changelog.xml"
+    
+    local remaining_files=$(find "$changelog_dir" -name "changelog-*.sql" -type f | wc -l)
+    if [ "$remaining_files" -eq 0 ]; then
+        print_success "Changelogs cleaned - no generated SQL files remain"
+        if grep -q "<databaseChangeLog" "$changelog_dir/changelog.xml" && ! grep -q "<changeSet" "$changelog_dir/changelog.xml"; then
+            print_success "changelog.xml properly reset to empty state"
+        else
+            print_error "changelog.xml was not properly reset!"
+            cat "$changelog_dir/changelog.xml"
+        fi
+    else
+        print_error "Warning: $remaining_files SQL files still exist after cleanup"
+        find "$changelog_dir" -name "changelog-*.sql" -type f
+    fi
+}
+
 # Cleanup function
 cleanup() {
     print_status "Cleaning up test environment..."
@@ -62,7 +99,8 @@ clean_changelogs() {
 setup_test_environment() {
     print_status "Setting up XML migration test environment..."
     
-    # No cleanup here - should only be done at main test level
+    # Clean changelogs before starting tests
+    clean_changelogs
     
     # Create test directories
     mkdir -p "$CHANGELOG_DIR" "$SCHEMA_DIR" "$TEST_RESULTS_DIR"
@@ -89,7 +127,7 @@ test_liquibase_init() {
     print_status "Testing Liquibase initialization..."
     
     # Test --init command
-    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml liquibase-test --init; then
+    if docker compose -f ../../docker-compose.yaml run --rm  -e CHANGELOG_FORMAT=xml liquibase-test --init; then
         print_success "Liquibase initialization successful"
         return 0
     else
@@ -162,7 +200,7 @@ EOF
     # Note: Schema and data will be applied by the migrate script using REFERENCE_SCHEMA
     
     # Generate changelog (will auto-discover all SQL files in /liquibase/schema/)
-    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml -e REF_DB_NAME=testdb_ref_xml liquibase-test --generate; then
+    if docker compose -f ../../docker-compose.yaml run --rm  -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml -e REF_DB_NAME=testdb_ref_xml liquibase-test --generate; then
         print_success "Initial XML changelog generation successful"
         return 0
     else
@@ -175,7 +213,7 @@ EOF
 test_apply_changelog() {
     print_status "Testing XML changelog application..."
     
-    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --update; then
+    if docker compose -f ../../docker-compose.yaml run --rm  -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --update; then
         print_success "XML changelog application successful"
         return 0
     else
@@ -504,7 +542,7 @@ EOF
 EOF
 
     # Apply the new changeset
-    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --update; then
+    if docker compose -f ../../docker-compose.yaml run --rm  -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --update; then
         print_success "XML operations changeset applied successfully"
         return 0
     else
@@ -518,7 +556,7 @@ test_rollback_by_count() {
     print_status "Testing rollback by count (3 levels)..."
     
     # Rollback 3 changesets
-    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback 3; then
+    if docker compose -f ../../docker-compose.yaml run --rm  -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback 3; then
         print_success "Rollback by count (3 levels) successful"
         return 0
     else
@@ -532,7 +570,7 @@ test_rollback_to_changeset() {
     print_status "Testing rollback to specific changeset..."
     
     # Rollback to a specific changeset
-    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback-to-changeset "migkit:add-product-fields"; then
+    if docker compose -f ../../docker-compose.yaml run --rm  -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback-to-changeset "migkit:add-product-fields"; then
         print_success "Rollback to changeset successful"
         return 0
     else
@@ -545,7 +583,7 @@ test_rollback_to_changeset() {
 test_rollback_all() {
     print_status "Testing rollback all..."
     
-    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback-all; then
+    if docker compose -f ../../docker-compose.yaml run --rm  -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback-all; then
         print_success "Rollback all successful"
         return 0
     else
@@ -558,7 +596,7 @@ test_rollback_all() {
 test_migration_status() {
     print_status "Testing migration status..."
     
-    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --status; then
+    if docker compose -f ../../docker-compose.yaml run --rm  -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --status; then
         print_success "Migration status check successful"
         return 0
     else
@@ -573,7 +611,7 @@ test_rollback_to_date() {
     
     # Rollback to a specific date (yesterday)
     local yesterday=$(date -d "yesterday" +%Y-%m-%d)
-    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback-to-date "$yesterday"; then
+    if docker compose -f ../../docker-compose.yaml run --rm  -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback-to-date "$yesterday"; then
         print_success "Rollback to date successful"
         return 0
     else

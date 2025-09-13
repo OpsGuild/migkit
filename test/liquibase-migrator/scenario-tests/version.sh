@@ -26,6 +26,38 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+print_info() {
+    echo -e "${YELLOW}ℹ️  $1${NC}"
+}
+
+# Function to clean changelogs
+clean_changelogs() {
+    print_info "Cleaning changelogs before running tests..."
+    
+    local changelog_dir="../../sandbox/liquibase-migrator/changelog"
+    
+    mkdir -p "$changelog_dir"
+    
+    find "$changelog_dir" -name "changelog-*.sql" -type f -delete 2>/dev/null || true
+    find "$changelog_dir" -name "changelog-initial.sql" -type f -delete 2>/dev/null || true
+    
+    echo '{"databaseChangeLog": []}' > "$changelog_dir/changelog.json"
+    
+    local remaining_files=$(find "$changelog_dir" -name "*.sql" -type f | wc -l)
+    if [ "$remaining_files" -eq 0 ]; then
+        print_success "Changelogs cleaned - no generated files remain"
+        if grep -q '"databaseChangeLog": \[\]' "$changelog_dir/changelog.json"; then
+            print_success "changelog.json properly reset to empty state"
+        else
+            print_error "changelog.json was not properly reset!"
+            cat "$changelog_dir/changelog.json"
+        fi
+    else
+        print_error "Warning: $remaining_files SQL files still exist after cleanup"
+        find "$changelog_dir" -name "*.sql" -type f
+    fi
+}
+
 # Get current version from git tags
 get_current_version() {
     local latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")

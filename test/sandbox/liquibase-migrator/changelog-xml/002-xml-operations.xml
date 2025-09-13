@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <!-- Add new columns to products table -->
+    <changeSet id="migkit:add-product-fields" author="migkit">
+        <addColumn tableName="products">
+            <column name="weight" type="DECIMAL(8,2)" remarks="Product weight in kg">
+                <constraints nullable="true"/>
+            </column>
+            <column name="dimensions" type="VARCHAR(100)" remarks="Product dimensions (LxWxH)">
+                <constraints nullable="true"/>
+            </column>
+            <column name="is_featured" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!-- Create product reviews table -->
+    <changeSet id="migkit:create-product-reviews" author="migkit">
+        <createTable tableName="product_reviews">
+            <column name="id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="product_id" type="INTEGER">
+                <constraints nullable="false" foreignKeyName="fk_product_reviews_product" referencedTableName="products" referencedColumnNames="id"/>
+            </column>
+            <column name="customer_id" type="INTEGER">
+                <constraints nullable="false" foreignKeyName="fk_product_reviews_customer" referencedTableName="customers" referencedColumnNames="id"/>
+            </column>
+            <column name="rating" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="review_text" type="TEXT">
+                <constraints nullable="true"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        
+        <addCheckConstraint tableName="product_reviews" constraintName="chk_rating_range" checkCondition="rating >= 1 AND rating <= 5"/>
+        
+        <createIndex tableName="product_reviews" indexName="idx_product_reviews_product">
+            <column name="product_id"/>
+        </createIndex>
+        
+        <createIndex tableName="product_reviews" indexName="idx_product_reviews_customer">
+            <column name="customer_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Add new columns to orders table -->
+    <changeSet id="migkit:add-order-fields" author="migkit">
+        <addColumn tableName="orders">
+            <column name="shipping_address" type="TEXT">
+                <constraints nullable="true"/>
+            </column>
+            <column name="billing_address" type="TEXT">
+                <constraints nullable="true"/>
+            </column>
+            <column name="payment_method" type="VARCHAR(50)">
+                <constraints nullable="true"/>
+            </column>
+            <column name="tracking_number" type="VARCHAR(100)">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+        
+        <addCheckConstraint tableName="orders" constraintName="chk_status_values" checkCondition="status IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')"/>
+    </changeSet>
+
+    <!-- Create inventory table -->
+    <changeSet id="migkit:create-inventory" author="migkit">
+        <createTable tableName="inventory">
+            <column name="id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="product_id" type="INTEGER">
+                <constraints nullable="false" foreignKeyName="fk_inventory_product" referencedTableName="products" referencedColumnNames="id"/>
+            </column>
+            <column name="warehouse_location" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="quantity_available" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="quantity_reserved" type="INTEGER" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reorder_level" type="INTEGER" defaultValueNumeric="10">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        
+        <addCheckConstraint tableName="inventory" constraintName="chk_quantity_positive" checkCondition="quantity_available >= 0 AND quantity_reserved >= 0"/>
+        
+        <createUniqueConstraint tableName="inventory" constraintName="uk_inventory_product_warehouse" columnNames="product_id, warehouse_location"/>
+    </changeSet>
+
+    <!-- Create promotions table -->
+    <changeSet id="migkit:create-promotions" author="migkit">
+        <createTable tableName="promotions">
+            <column name="id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="TEXT">
+                <constraints nullable="true"/>
+            </column>
+            <column name="discount_type" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="discount_value" type="DECIMAL(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="start_date" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="end_date" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="is_active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        
+        <addCheckConstraint tableName="promotions" constraintName="chk_discount_type" checkCondition="discount_type IN ('percentage', 'fixed_amount')"/>
+        <addCheckConstraint tableName="promotions" constraintName="chk_discount_value" checkCondition="discount_value > 0"/>
+        <addCheckConstraint tableName="promotions" constraintName="chk_date_range" checkCondition="end_date > start_date"/>
+    </changeSet>
+
+    <!-- Insert test data -->
+    <changeSet id="migkit:insert-test-data" author="migkit">
+        <insert tableName="product_reviews">
+            <column name="product_id" valueNumeric="1"/>
+            <column name="customer_id" valueNumeric="1"/>
+            <column name="rating" valueNumeric="5"/>
+            <column name="review_text" value="Excellent laptop, very fast and reliable!"/>
+        </insert>
+        
+        <insert tableName="product_reviews">
+            <column name="product_id" valueNumeric="1"/>
+            <column name="customer_id" valueNumeric="2"/>
+            <column name="rating" valueNumeric="4"/>
+            <column name="review_text" value="Good laptop, but battery life could be better."/>
+        </insert>
+        
+        <insert tableName="inventory">
+            <column name="product_id" valueNumeric="1"/>
+            <column name="warehouse_location" value="Main Warehouse"/>
+            <column name="quantity_available" valueNumeric="50"/>
+            <column name="reorder_level" valueNumeric="10"/>
+        </insert>
+        
+        <insert tableName="inventory">
+            <column name="product_id" valueNumeric="2"/>
+            <column name="warehouse_location" value="Main Warehouse"/>
+            <column name="quantity_available" valueNumeric="200"/>
+            <column name="reorder_level" valueNumeric="25"/>
+        </insert>
+        
+        <insert tableName="promotions">
+            <column name="name" value="Summer Sale"/>
+            <column name="description" value="20% off all electronics"/>
+            <column name="discount_type" value="percentage"/>
+            <column name="discount_value" valueNumeric="20.00"/>
+            <column name="start_date" valueDate="2024-06-01"/>
+            <column name="end_date" valueDate="2024-08-31"/>
+        </insert>
+    </changeSet>
+
+    <!-- Create view -->
+    <changeSet id="migkit:create-product-summary-view" author="migkit">
+        <sql>
+            CREATE VIEW product_summary AS
+            SELECT 
+                p.id,
+                p.name,
+                p.price,
+                pc.name as category_name,
+                COALESCE(AVG(pr.rating), 0) as average_rating,
+                COUNT(pr.id) as review_count,
+                COALESCE(i.quantity_available, 0) as stock_quantity,
+                p.is_featured,
+                p.created_at
+            FROM products p
+            LEFT JOIN product_categories pc ON p.category_id = pc.id
+            LEFT JOIN product_reviews pr ON p.id = pr.product_id
+            LEFT JOIN inventory i ON p.id = i.product_id
+            GROUP BY p.id, p.name, p.price, pc.name, i.quantity_available, p.is_featured, p.created_at;
+        </sql>
+    </changeSet>
+
+    <!-- Create stored procedure -->
+    <changeSet id="migkit:create-update-inventory-proc" author="migkit">
+        <sql>
+            CREATE OR REPLACE FUNCTION update_inventory(
+                p_product_id INTEGER,
+                p_quantity_change INTEGER,
+                p_warehouse VARCHAR(100)
+            ) RETURNS BOOLEAN AS $$
+            DECLARE
+                current_quantity INTEGER;
+            BEGIN
+                -- Get current quantity
+                SELECT quantity_available INTO current_quantity
+                FROM inventory
+                WHERE product_id = p_product_id AND warehouse_location = p_warehouse;
+                
+                -- Check if we have enough stock
+                IF current_quantity + p_quantity_change < 0 THEN
+                    RETURN FALSE;
+                END IF;
+                
+                -- Update inventory
+                UPDATE inventory
+                SET quantity_available = quantity_available + p_quantity_change,
+                    last_updated = CURRENT_TIMESTAMP
+                WHERE product_id = p_product_id AND warehouse_location = p_warehouse;
+                
+                RETURN TRUE;
+            END;
+            $$ LANGUAGE plpgsql;
+        </sql>
+    </changeSet>
+
+    <!-- Create trigger -->
+    <changeSet id="migkit:create-order-total-trigger" author="migkit">
+        <sql>
+            CREATE OR REPLACE FUNCTION calculate_order_total()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                UPDATE orders
+                SET total_amount = (
+                    SELECT COALESCE(SUM(total_price), 0)
+                    FROM order_items
+                    WHERE order_id = NEW.order_id
+                )
+                WHERE id = NEW.order_id;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        </sql>
+        
+        <sql>
+            CREATE TRIGGER trigger_calculate_order_total
+                AFTER INSERT OR UPDATE OR DELETE ON order_items
+                FOR EACH ROW
+                EXECUTE FUNCTION calculate_order_total();
+        </sql>
+    </changeSet>
+
+    <!-- Add constraints -->
+    <changeSet id="migkit:add-constraints" author="migkit">
+        <addCheckConstraint tableName="products" constraintName="chk_price_positive" checkCondition="price > 0"/>
+        <addCheckConstraint tableName="orders" constraintName="chk_total_amount_positive" checkCondition="total_amount >= 0"/>
+        <addCheckConstraint tableName="order_items" constraintName="chk_quantity_positive" checkCondition="quantity > 0"/>
+    </changeSet>
+
+    <!-- Update existing data -->
+    <changeSet id="migkit:update-existing-data" author="migkit">
+        <update tableName="products">
+            <column name="weight" valueNumeric="2.5"/>
+            <column name="dimensions" value="15x10x1"/>
+            <column name="is_featured" valueBoolean="true"/>
+            <where>id = 1</where>
+        </update>
+        
+        <update tableName="products">
+            <column name="weight" valueNumeric="0.1"/>
+            <column name="dimensions" value="12x6x3"/>
+            <where>id = 2</where>
+        </update>
+        
+        <update tableName="orders">
+            <column name="shipping_address" value="123 Main St, New York, NY 10001"/>
+            <column name="billing_address" value="123 Main St, New York, NY 10001"/>
+            <column name="payment_method" value="credit_card"/>
+            <where>status = 'delivered'</where>
+        </update>
+    </changeSet>
+
+</databaseChangeLog>
