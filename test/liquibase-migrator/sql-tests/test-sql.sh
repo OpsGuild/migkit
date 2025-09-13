@@ -65,6 +65,27 @@ cleanup() {
     docker volume prune -f >/dev/null 2>&1 || true
 }
 
+# Database cleanup function
+cleanup_database() {
+    print_status "Cleaning up database state..."
+    
+    # Start the database if it's not running
+    docker compose -f ../../docker-compose.yaml up -d postgres-test >/dev/null 2>&1 || true
+    
+    # Wait for database to be ready
+    until docker compose -f ../../docker-compose.yaml exec postgres-test pg_isready -U testuser -d postgres >/dev/null 2>&1; do
+        sleep 1
+    done
+    
+    # Drop and recreate test databases to ensure clean state
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;" >/dev/null 2>&1 || true
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $REF_DB;" >/dev/null 2>&1 || true
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $TEST_DB;" >/dev/null 2>&1 || true
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $REF_DB;" >/dev/null 2>&1 || true
+    
+    print_success "Database state cleaned up"
+}
+
 # Clean changelogs function
 clean_changelogs() {
     print_status "Cleaning changelogs..."
@@ -131,7 +152,7 @@ test_liquibase_init() {
     
     # Test --init command (this should just sync the changelog, not apply it)
     
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --init; then
+    if docker compose -f ../../docker-compose.yaml run --rm -e MAIN_DB_HOST=postgres-test -e MAIN_DB_USER=testuser -e MAIN_DB_PASSWORD=testpass -e MAIN_DB_NAME="$TEST_DB" -e REF_DB_HOST=postgres-test -e REF_DB_USER=testuser -e REF_DB_PASSWORD=testpass -e REF_DB_NAME="$REF_DB" -e MAIN_DB_TYPE=postgresql -e REF_DB_TYPE=postgresql liquibase-test --init; then
         print_success "Liquibase initialization successful"
         return 0
     else
@@ -208,9 +229,10 @@ EOF
     
     # Note: Schema and data will be applied by the migrate script using REFERENCE_SCHEMA
     
-    # Generate changelog using ref-schema.sql for the reference database
+    # Generate initial changelog using ref-schema.sql for the reference database
     # Note: TEST_DB should be empty, REF_DB will have the reference schema
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" -e LIQ_DB_SNAPSHOT="$REF_DB" -e LIQUIBASE_COMMAND_REFERENCE_URL="jdbc:postgresql://postgres-test:5432/$REF_DB" -e REFERENCE_SCHEMA="/liquibase/schema/ref-schema.sql" liquibase-test --generate; then
+    # Using --generate which will automatically redirect to --init if no initial changelog exists
+    if docker compose -f ../../docker-compose.yaml run --rm -e MAIN_DB_HOST=postgres-test -e MAIN_DB_USER=testuser -e MAIN_DB_PASSWORD=testpass -e MAIN_DB_NAME="$TEST_DB" -e REF_DB_HOST=postgres-test -e REF_DB_USER=testuser -e REF_DB_PASSWORD=testpass -e REF_DB_NAME="$REF_DB" -e MAIN_DB_TYPE=postgresql -e REF_DB_TYPE=postgresql -e REFERENCE_SCHEMA="/liquibase/schema/ref-schema.sql" liquibase-test --generate; then
         print_success "Initial changelog generation successful"
         return 0
     else
@@ -239,18 +261,16 @@ test_apply_changelog() {
 test_sql_operations() {
     print_status "Testing comprehensive SQL operations..."
     
+    # First, make changes to the reference database to simulate schema evolution
+    print_status "Making changes to reference database to test diff generation..."
     
-    # Create a new changeset with various SQL operations
-    cat > "$CHANGELOG_DIR/002-sql-operations.sql" << 'EOF'
---liquibase formatted sql
-
---changeset migkit:add-user-fields
+    # Apply the changes directly to the reference database
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d "$REF_DB" << 'EOF'
 -- Add new columns to users table
 ALTER TABLE users ADD COLUMN phone VARCHAR(20);
 ALTER TABLE users ADD COLUMN last_login TIMESTAMP;
 ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT true;
 
---changeset migkit:add-user-sessions-table
 -- Create user sessions table
 CREATE TABLE user_sessions (
     id SERIAL PRIMARY KEY,
@@ -263,7 +283,6 @@ CREATE TABLE user_sessions (
 CREATE INDEX idx_user_sessions_user_id ON user_sessions(user_id);
 CREATE INDEX idx_user_sessions_expires_at ON user_sessions(expires_at);
 
---changeset migkit:add-post-fields
 -- Add new columns to posts table
 ALTER TABLE posts ADD COLUMN view_count INTEGER DEFAULT 0;
 ALTER TABLE posts ADD COLUMN featured BOOLEAN DEFAULT false;
@@ -273,7 +292,6 @@ CREATE INDEX idx_posts_featured ON posts(featured);
 CREATE INDEX idx_posts_view_count ON posts(view_count);
 CREATE INDEX idx_posts_published_at ON posts(published_at);
 
---changeset migkit:add-audit-table
 -- Create audit log table
 CREATE TABLE audit_log (
     id SERIAL PRIMARY KEY,
@@ -289,13 +307,11 @@ CREATE TABLE audit_log (
 CREATE INDEX idx_audit_log_table_record ON audit_log(table_name, record_id);
 CREATE INDEX idx_audit_log_changed_at ON audit_log(changed_at);
 
---changeset migkit:add-data-constraints
 -- Add check constraints
 ALTER TABLE users ADD CONSTRAINT chk_email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
 ALTER TABLE posts ADD CONSTRAINT chk_status_values CHECK (status IN ('draft', 'published', 'archived'));
 ALTER TABLE user_sessions ADD CONSTRAINT chk_expires_future CHECK (expires_at > created_at);
 
---changeset migkit:insert-test-data
 -- Insert test data for new features
 INSERT INTO user_sessions (user_id, session_token, expires_at) VALUES
 (1, 'session_token_1', CURRENT_TIMESTAMP + INTERVAL '1 day'),
@@ -306,7 +322,6 @@ UPDATE posts SET published_at = created_at WHERE status = 'published';
 UPDATE posts SET view_count = FLOOR(RANDOM() * 1000) WHERE status = 'published';
 UPDATE posts SET featured = true WHERE id IN (1, 4);
 
---changeset migkit:add-complex-view
 -- Create a complex view
 CREATE VIEW post_statistics AS
 SELECT 
@@ -328,7 +343,6 @@ LEFT JOIN comments cm ON p.id = cm.post_id
 LEFT JOIN post_tags pt ON p.id = pt.post_id
 GROUP BY p.id, p.title, p.status, p.view_count, p.featured, u.username, c.name, p.created_at, p.published_at;
 
---changeset migkit:add-stored-procedure
 -- Create stored procedure
 CREATE OR REPLACE FUNCTION update_post_view_count(post_id INTEGER)
 RETURNS VOID AS $$
@@ -342,7 +356,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
---changeset migkit:add-trigger
 -- Create trigger for updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -363,32 +376,33 @@ CREATE TRIGGER trigger_posts_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 EOF
 
-    # Update master changelog
-    cat > "$CHANGELOG_DIR/changelog.json" << 'EOF'
-{
-  "databaseChangeLog": [
-    {
-      "include": {
-        "file": "001-initial-schema.sql",
-        "relativeToChangelogFile": true
-      }
-    },
-    {
-      "include": {
-        "file": "002-sql-operations.sql",
-        "relativeToChangelogFile": true
-      }
-    }
-  ]
-}
-EOF
-
-    # Apply the new changeset
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --update; then
-        print_success "SQL operations changeset applied successfully"
-        return 0
+    # Now generate a new changelog that captures the differences
+    print_status "Generating new changelog from database differences..."
+    if docker compose -f ../../docker-compose.yaml run --rm -e MAIN_DB_HOST=postgres-test -e MAIN_DB_USER=testuser -e MAIN_DB_PASSWORD=testpass -e MAIN_DB_NAME="$TEST_DB" -e REF_DB_HOST=postgres-test -e REF_DB_USER=testuser -e REF_DB_PASSWORD=testpass -e REF_DB_NAME="$REF_DB" -e MAIN_DB_TYPE=postgresql -e REF_DB_TYPE=postgresql liquibase-test --generate; then
+        print_success "New changelog generation successful"
+        
+        # Check if a new changelog file was created
+        local changelog_dir="/workspace/personal/migkit/sandbox/liquibase-migrator/changelog"
+        local new_changelog=$(find "$changelog_dir" -name "changelog-*.sql" -not -name "changelog-initial.sql" | head -1)
+        
+        if [ -n "$new_changelog" ]; then
+            print_success "New changelog file created: $(basename "$new_changelog")"
+            
+            # Apply the new changelog
+            print_status "Applying new changelog..."
+            if docker compose -f ../../docker-compose.yaml run --rm -e MAIN_DB_HOST=postgres-test -e MAIN_DB_USER=testuser -e MAIN_DB_PASSWORD=testpass -e MAIN_DB_NAME="$TEST_DB" -e REF_DB_HOST=postgres-test -e REF_DB_USER=testuser -e REF_DB_PASSWORD=testpass -e REF_DB_NAME="$REF_DB" -e MAIN_DB_TYPE=postgresql -e REF_DB_TYPE=postgresql liquibase-test --update; then
+                print_success "New changelog applied successfully"
+                return 0
+            else
+                print_error "Failed to apply new changelog"
+                return 1
+            fi
+        else
+            print_error "No new changelog file was generated"
+            return 1
+        fi
     else
-        print_error "SQL operations changeset application failed"
+        print_error "New changelog generation failed"
         return 1
     fi
 }

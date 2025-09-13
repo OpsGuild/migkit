@@ -280,6 +280,152 @@ rollback_all() {
 	fi
 }
 
+generate_init_changelog() {
+    if [ ! -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
+        if is_database_empty "$MAIN_DB_HOST" "$MAIN_DB_USER" "$MAIN_DB_PASSWORD" "$MAIN_DB_NAME"; then
+            echo "📋 Main database is empty, generating changelog from reference database..."
+
+            run_sql_scripts_on_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
+            set_ref_liquibase_env
+        else
+            echo "📋 Main database has existing schema, generating changelog from current state..."
+            set_liquibase_env
+        fi
+
+        liquibase --changelog-file="$CHANGELOG_DIR/$INIT_CHANGELOG" generateChangeLog \
+            --includeSchema=true \
+            --includeTablespace=true \
+            --includeCatalog=true
+
+        if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
+            ./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
+        fi
+    else
+        echo "⚠️ $INIT_CHANGELOG already exists. Skipping generation."
+    fi
+
+    include_changelog_if_valid "$INIT_CHANGELOG"
+}
+
+
+run_init() {
+    echo "🚀 Initializing database changelog..."
+
+    generate_init_changelog
+
+    if is_database_empty "$MAIN_DB_HOST" "$MAIN_DB_USER" "$MAIN_DB_PASSWORD" "$MAIN_DB_NAME"; then
+        echo "📋 Applying initial changelog to main database..."
+        set_liquibase_env
+        liquibase update
+    else
+        echo "📋 Synchronizing changelog with current state..."
+        set_liquibase_env
+        liquibase changelogSync
+    fi
+
+    echo "✅ Initialization complete! Database schema is now version-controlled."
+}
+
+
+run_generate() {
+    echo "🔄 Generating diff changelog..."
+    
+    # Check if initial changelog exists
+    if [ ! -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
+        echo "⚠️ Initial changelog not found. Generating initial changelog first..."
+        generate_init_changelog
+        echo "✅ Initial changelog created. Generate operation complete."
+        return 0
+    fi
+    
+    # Initial changelog exists, proceed with diff generation
+    create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
+    run_sql_scripts_on_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
+
+    CHANGELOG_FILE=$CURRENT_CHANGELOG
+    
+    if [ "$CHANGELOG_FORMAT" = "xml" ]; then
+        liquibase diff-changelog \
+            --changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" \
+            --include-schema=true \
+            --include-tablespace=true \
+            --include-catalog=true
+        include_changelog_if_valid "$CHANGELOG_FILE"
+        
+        ./rollback-xml.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
+    else
+        liquibase diff-changelog \
+            --changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" \
+            --include-schema=true --include-tablespace=true \
+            --include-catalog=true
+        include_changelog_if_valid "$CHANGELOG_FILE"
+        
+        if [ -f "$CHANGELOG_DIR/$CHANGELOG_FILE" ]; then
+            ./fix-changelog-order.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
+            ./rollback-sql.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
+        else
+            echo "⚠️  No changelog file generated - skipping rollback statement addition"
+        fi
+        
+        # Only process initial changelog if it exists and we're not in generate mode
+        if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ] && [ "$GENERATE_MODE" != true ]; then
+            ./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
+        fi
+    fi
+
+    printf "\n✅ Liquibase migration ready!\n"
+}
+
+run_update() {
+    create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
+    echo "🚀 Applying database changes..."
+    liquibase update
+    if [ $? -eq 0 ]; then
+        printf "\n✅ Liquibase migration complete!\n"
+    else
+        printf "\n⚠️ Liquibase update failed — attempting changelogSync instead...\n"
+        if liquibase changelogSync; then
+            printf "\n✅ changelogSync complete! Schema assumed to be already in place.\n"
+        else
+            printf "\n❌ changelogSync also failed. Divine intervention may be required.\n"
+        fi
+    fi
+}
+
+run_cleanup() {
+    printf "\n🧹 Cleaning up: Dropping temporary database...\n"
+    PGPASSWORD="$REF_DB_PASSWORD" psql -h "$REF_DB_HOST" -U "$REF_DB_USER" -d "postgres" -c "DROP DATABASE IF EXISTS \"$REF_DB_NAME\";"
+    exit 0
+}
+
+run_rollback_operations() {
+    printf "\n🔄 Starting rollback operation...\n"
+    
+    if [ "$ROLLBACK_COUNT" = "all" ]; then
+        rollback_all
+    elif [ -n "$ROLLBACK_TO_DATE" ]; then
+        rollback_to_date "$ROLLBACK_TO_DATE"
+    elif [ -n "$ROLLBACK_TO_CHANGESET" ]; then
+        rollback_to_changeset "$ROLLBACK_TO_CHANGESET"
+    elif [ -n "$ROLLBACK_TO_TAG" ]; then
+        rollback_to_tag "$ROLLBACK_TO_TAG"
+    elif [ "$ROLLBACK_COUNT" -gt 0 ]; then
+        rollback_by_count "$ROLLBACK_COUNT"
+    else
+        echo "❌ Invalid rollback parameters"
+        echo "Use --help for usage information"
+        exit 1
+    fi
+    
+    ROLLBACK_EXIT_CODE=$?
+    if [ $ROLLBACK_EXIT_CODE -eq 0 ]; then
+        printf "\n✅ Rollback operation completed successfully!\n"
+    else
+        printf "\n❌ Rollback operation failed!\n"
+        exit $ROLLBACK_EXIT_CODE
+    fi
+}
+
 show_help() {
 	echo "🚀 Liquibase Migration Script"
 	echo ""
@@ -381,6 +527,7 @@ parse_arguments() {
 	while [[ $# -gt 0 ]]; do
 		case $1 in
 			-g | --generate | generate)
+				RUN_GENERATE=true
 				RUN_UPDATE=false
 				DROP_DB=true
 				shift
@@ -494,160 +641,24 @@ main() {
 	wait_for_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
 
 	if [ "$INIT" = true ]; then
-		echo "🚀 Initializing database changelog..."
-		
-		# Check if main database is empty
-		if is_database_empty "$MAIN_DB_HOST" "$MAIN_DB_USER" "$MAIN_DB_PASSWORD" "$MAIN_DB_NAME"; then
-			echo "📋 Main database is empty, generating changelog from reference database..."
-			
-			# Apply schema to reference database
-			run_sql_scripts_on_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
-
-			# Generate changelog from reference database
-			if [ ! -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
-				echo "📝 Generating initial changelog from reference database..."
-				set_ref_liquibase_env
-				liquibase --changelog-file="$CHANGELOG_DIR/$INIT_CHANGELOG" generateChangeLog \
-					--includeSchema=true \
-					--includeTablespace=true \
-					--includeCatalog=true
-				
-				# Add rollback statements to initial changelog
-				if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
-					echo "🔧 Adding rollback statements to initial changelog..."
-					./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
-				fi
-			else
-				echo "⚠️ $INIT_CHANGELOG already exists. Skipping generation."
-			fi
-
-			# Include the changelog in master changelog before applying
-			include_changelog_if_valid "$INIT_CHANGELOG"
-			
-			# Apply the generated changelog to main database
-			echo "📋 Applying initial changelog to main database..."
-			set_liquibase_env
-			liquibase update
-			
-		else
-			echo "📋 Main database has existing schema, generating changelog from current state..."
-			
-			# Generate changelog directly from main database
-			if [ ! -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
-				liquibase --changelog-file="$CHANGELOG_DIR/$INIT_CHANGELOG" generateChangeLog \
-					--includeSchema=true \
-					--includeTablespace=true \
-					--includeCatalog=true
-				
-				# Add rollback statements to initial changelog
-				if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
-					echo "🔧 Adding rollback statements to initial changelog..."
-					./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
-				fi
-			else
-				echo "⚠️ $INIT_CHANGELOG already exists. Skipping generation."
-			fi
-			
-			# Include the changelog in master changelog before synchronizing
-			include_changelog_if_valid "$INIT_CHANGELOG"
-			
-			# Mark current state as deployed
-			echo "📋 Synchronizing changelog with current state..."
-			liquibase changelogSync
-		fi
-		
-		echo "✅ Initialization complete! Database schema is now version-controlled."
+		run_init
 	fi
 
 	if [ "$RUN_GENERATE" = true ]; then
-		# Apply schema to reference database
-		create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
-		run_sql_scripts_on_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
-
-		echo "🔄 Generating diff changelog..."
-		CHANGELOG_FILE=$CURRENT_CHANGELOG
-		
-		if [ "$CHANGELOG_FORMAT" = "xml" ]; then
-			liquibase diff-changelog \
-				--changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" \
-				--include-schema=true \
-				--include-tablespace=true \
-				--include-catalog=true
-			include_changelog_if_valid "$CHANGELOG_FILE"
-			
-			./rollback-xml.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
-		else
-			liquibase diff-changelog \
-				--changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" \
-				--include-schema=true --include-tablespace=true \
-				--include-catalog=true
-			include_changelog_if_valid "$CHANGELOG_FILE"
-			
-			if [ -f "$CHANGELOG_DIR/$CHANGELOG_FILE" ]; then
-				./fix-changelog-order.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
-				./rollback-sql.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
-			else
-				echo "⚠️  No changelog file generated - skipping rollback statement addition"
-			fi
-			
-			# Only process initial changelog if it exists and we're not in generate mode
-			if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ] && [ "$GENERATE_MODE" != true ]; then
-				./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
-			fi
-		fi
-
-		printf "\n✅ Liquibase migration ready!\n"
+		run_generate
 	fi
 
 	if [ "$RUN_UPDATE" = true ]; then
-		create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
-		echo "🚀 Applying database changes..."
-		liquibase update
-		if [ $? -eq 0 ]; then
-			printf "\n✅ Liquibase migration complete!\n"
-		else
-			printf "\n⚠️ Liquibase update failed — attempting changelogSync instead...\n"
-			if liquibase changelogSync; then
-				printf "\n✅ changelogSync complete! Schema assumed to be already in place.\n"
-			else
-				printf "\n❌ changelogSync also failed. Divine intervention may be required.\n"
-			fi
-		fi
+		run_update
 	fi
 
 	# Handle rollback operations
 	if [ "$ROLLBACK_MODE" = true ]; then
-		printf "\n🔄 Starting rollback operation...\n"
-		
-		if [ "$ROLLBACK_COUNT" = "all" ]; then
-			rollback_all
-		elif [ -n "$ROLLBACK_TO_DATE" ]; then
-			rollback_to_date "$ROLLBACK_TO_DATE"
-		elif [ -n "$ROLLBACK_TO_CHANGESET" ]; then
-			rollback_to_changeset "$ROLLBACK_TO_CHANGESET"
-		elif [ -n "$ROLLBACK_TO_TAG" ]; then
-			rollback_to_tag "$ROLLBACK_TO_TAG"
-		elif [ "$ROLLBACK_COUNT" -gt 0 ]; then
-			rollback_by_count "$ROLLBACK_COUNT"
-		else
-			echo "❌ Invalid rollback parameters"
-			echo "Use --help for usage information"
-			exit 1
-		fi
-		
-		ROLLBACK_EXIT_CODE=$?
-		if [ $ROLLBACK_EXIT_CODE -eq 0 ]; then
-			printf "\n✅ Rollback operation completed successfully!\n"
-		else
-			printf "\n❌ Rollback operation failed!\n"
-			exit $ROLLBACK_EXIT_CODE
-		fi
+		run_rollback_operations
 	fi
 
 	if [ "$DROP_DB" = true ]; then
-		printf "\n🧹 Cleaning up: Dropping temporary database...\n"
-		PGPASSWORD="$REF_DB_PASSWORD" psql -h "$REF_DB_HOST" -U "$REF_DB_USER" -d "postgres" -c "DROP DATABASE IF EXISTS \"$REF_DB_NAME\";"
-		exit 0
+		run_cleanup
 	fi
 }
 
