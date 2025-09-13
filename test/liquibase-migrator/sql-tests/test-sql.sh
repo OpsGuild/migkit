@@ -130,9 +130,6 @@ test_liquibase_init() {
     print_status "Testing Liquibase initialization..."
     
     # Test --init command (this should just sync the changelog, not apply it)
-    # But first clean the database to avoid conflicts
-    print_status "Cleaning database before initialization..."
-    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB; CREATE DATABASE $TEST_DB;" 2>/dev/null || true
     
     if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --init; then
         print_success "Liquibase initialization successful"
@@ -226,9 +223,6 @@ EOF
 test_apply_changelog() {
     print_status "Testing changelog application..."
     
-    # Clean the database first to ensure fresh state
-    print_status "Cleaning database before applying changelog..."
-    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB; CREATE DATABASE $TEST_DB;" 2>/dev/null || true
     
     # Apply the changelog using the standard update command
     # This will apply all changelogs included in the master changelog.json
@@ -245,9 +239,6 @@ test_apply_changelog() {
 test_sql_operations() {
     print_status "Testing comprehensive SQL operations..."
     
-    # Clean the database first to ensure fresh state
-    print_status "Cleaning database before SQL operations..."
-    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB; CREATE DATABASE $TEST_DB;" 2>/dev/null || true
     
     # Create a new changeset with various SQL operations
     cat > "$CHANGELOG_DIR/002-sql-operations.sql" << 'EOF'
@@ -493,8 +484,7 @@ run_all_tests() {
     fi
     print_status "Total Tests: $TOTAL_TESTS"
     
-    # Cleanup
-    cleanup
+    # Cleanup removed - only cleanup at start of main test script
     
     # Exit with appropriate code
     if [ $TESTS_FAILED -eq 0 ]; then
