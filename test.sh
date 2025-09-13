@@ -15,6 +15,34 @@ NC='\033[0m' # No Color
 # Test directory
 TEST_DIR="test/liquibase-migrator"
 
+# Function to clean changelogs
+clean_changelogs() {
+    print_info "Cleaning changelogs before running tests..."
+    
+    local changelog_dir="../../sandbox/liquibase-migrator/changelog"
+    
+    mkdir -p "$changelog_dir"
+    
+    find "$changelog_dir" -name "changelog-*.sql" -type f -delete 2>/dev/null || true
+    find "$changelog_dir" -name "changelog-initial.sql" -type f -delete 2>/dev/null || true
+    
+    echo '{"databaseChangeLog": []}' > "$changelog_dir/changelog.json"
+    
+    local remaining_files=$(find "$changelog_dir" -name "*.sql" -type f | wc -l)
+    if [ "$remaining_files" -eq 0 ]; then
+        print_success "Changelogs cleaned - no generated files remain"
+        if grep -q '"databaseChangeLog": \[\]' "$changelog_dir/changelog.json"; then
+            print_success "changelog.json properly reset to empty state"
+        else
+            print_error "changelog.json was not properly reset!"
+            cat "$changelog_dir/changelog.json"
+        fi
+    else
+        print_error "Warning: $remaining_files SQL files still exist after cleanup"
+        find "$changelog_dir" -name "*.sql" -type f
+    fi
+}
+
 # Function to print colored output
 print_header() {
     echo -e "${BLUE}================================${NC}"
@@ -40,10 +68,54 @@ if [ ! -d "$TEST_DIR" ]; then
     exit 1
 fi
 
-# Change to test directory
 cd "$TEST_DIR"
 
 print_header "MigKit Test Suite"
+
+clean_changelogs
+
+# Verify cleanup was successful before proceeding
+verify_cleanup() {
+    print_info "Verifying cleanup was successful..."
+    
+    local changelog_dir="../../sandbox/liquibase-migrator/changelog"
+    local issues=0
+    
+    # Check if any generated SQL files still exist
+    local remaining_sql_files=$(find "$changelog_dir" -name "*.sql" -type f 2>/dev/null | wc -l)
+    if [ "$remaining_sql_files" -gt 0 ]; then
+        print_error "Found $remaining_sql_files SQL files that should have been cleaned:"
+        find "$changelog_dir" -name "*.sql" -type f 2>/dev/null
+        issues=$((issues + 1))
+    fi
+    
+    # Check if changelog.json is properly reset
+    if [ -f "$changelog_dir/changelog.json" ]; then
+        if ! grep -q '"databaseChangeLog": \[\]' "$changelog_dir/changelog.json" 2>/dev/null; then
+            print_error "changelog.json was not properly reset to empty state:"
+            cat "$changelog_dir/changelog.json"
+            issues=$((issues + 1))
+        fi
+    else
+        print_error "changelog.json file is missing!"
+        issues=$((issues + 1))
+    fi
+    
+    if [ "$issues" -eq 0 ]; then
+        print_success "Cleanup verification passed - no issues found"
+        return 0
+    else
+        print_error "Cleanup verification failed - $issues issue(s) found"
+        return 1
+    fi
+}
+
+# Verify cleanup before proceeding
+if ! verify_cleanup; then
+    print_error "Cleanup verification failed! Aborting tests."
+    exit 1
+fi
+
 print_info "Running all migration tests..."
 
 # Test counters

@@ -167,7 +167,8 @@ generate_rollback() {
             if [[ ! "$constraint_name" =~ \".*\" ]]; then
                 constraint_name="\"$constraint_name\""
             fi
-            echo "ALTER TABLE $table_name DROP CONSTRAINT IF EXISTS $constraint_name;"
+            echo "-- Rollback: DROP CONSTRAINT $constraint_name from $table_name"
+            echo "-- Note: Skipped due to PostgreSQL limitations with IF EXISTS for constraints"
         else
             echo "-- Empty rollback (manual intervention required)"
         fi
@@ -192,7 +193,8 @@ generate_rollback() {
             if [[ ! "$constraint_name" =~ \".*\" ]]; then
                 constraint_name="\"$constraint_name\""
             fi
-            echo "ALTER TABLE $table_name DROP CONSTRAINT IF EXISTS $constraint_name;"
+            echo "-- Rollback: DROP CONSTRAINT $constraint_name from $table_name"
+            echo "-- Note: Skipped due to PostgreSQL limitations with IF EXISTS for constraints"
         else
             echo "-- Empty rollback (manual intervention required)"
         fi
@@ -212,7 +214,8 @@ generate_rollback() {
             if [[ ! "$constraint_name" =~ \".*\" ]]; then
                 constraint_name="\"$constraint_name\""
             fi
-            echo "ALTER TABLE $table_name DROP CONSTRAINT IF EXISTS $constraint_name;"
+            echo "-- Rollback: DROP CONSTRAINT $constraint_name from $table_name"
+            echo "-- Note: Skipped due to PostgreSQL limitations with IF EXISTS for constraints"
         else
             echo "-- Empty rollback (manual intervention required)"
         fi

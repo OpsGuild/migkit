@@ -48,9 +48,21 @@ cleanup() {
     rm -rf "$CHANGELOG_DIR" "$SCHEMA_DIR" "$TEST_RESULTS_DIR" >/dev/null 2>&1 || true
 }
 
+# Clean changelogs function
+clean_changelogs() {
+    print_status "Cleaning changelogs..."
+    mkdir -p ../sandbox/liquibase-migrator/changelog
+    # Remove generated changelog files but keep changelog.json and any legitimate test files
+    find ../sandbox/liquibase-migrator/changelog -name "changelog-*.sql" -type f -delete 2>/dev/null || true
+    find ../sandbox/liquibase-migrator/changelog -name "changelog-initial.sql" -type f -delete 2>/dev/null || true
+    echo '{"databaseChangeLog": []}' > ../sandbox/liquibase-migrator/changelog/changelog.json
+}
+
 # Setup test environment
 setup_test_environment() {
     print_status "Setting up XML migration test environment..."
+    
+    # No cleanup here - should only be done at main test level
     
     # Create test directories
     mkdir -p "$CHANGELOG_DIR" "$SCHEMA_DIR" "$TEST_RESULTS_DIR"
@@ -65,11 +77,9 @@ setup_test_environment() {
         sleep 1
     done
     
-    # Create test databases (clean up first)
-    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB;" 2>/dev/null || true
-    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $REF_DB;" 2>/dev/null || true
-    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $TEST_DB;"
-    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $REF_DB;"
+    # Create test databases (only if they don't exist)
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $TEST_DB;" 2>/dev/null || true
+    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $REF_DB;" 2>/dev/null || true
     
     print_success "Test environment setup complete"
 }
@@ -613,14 +623,7 @@ run_all_tests() {
     fi
 }
 
-# Cleanup between tests
-cleanup_between_tests() {
-    # Clean up any existing test databases to prevent conflicts
-    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $TEST_DB; DROP DATABASE IF EXISTS $REF_DB;" 2>/dev/null || true
-    # Recreate them
-    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $TEST_DB;"
-    docker compose -f ../../docker-compose.yaml exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $REF_DB;"
-}
+# No cleanup between tests needed - changelogs should persist across tests
 
 # Helper function to run individual tests
 run_test() {
@@ -630,10 +633,7 @@ run_test() {
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
     print_status "Running: $test_name"
     
-    # Clean up before each test (except the first one)
-    if [ $TOTAL_TESTS -gt 1 ]; then
-        cleanup_between_tests
-    fi
+    # No cleanup needed between tests - changelogs should persist
     
     if $test_function; then
         TESTS_PASSED=$((TESTS_PASSED + 1))

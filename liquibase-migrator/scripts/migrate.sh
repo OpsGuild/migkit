@@ -248,15 +248,9 @@ rollback_to_date() {
 rollback_to_changeset() {
 	local changeset_id=$1
 	echo "🔄 Rolling back to changeset: $changeset_id"
-	
-	if liquibase rollback-one-changeset "$changeset_id"; then
-		echo "✅ Rollback to changeset successful!"
-		show_rollback_status
-		return 0
-	else
-		echo "❌ Rollback to changeset failed!"
-		return 1
-	fi
+	echo "⚠️  Note: rollback-to-changeset requires Liquibase Pro features"
+	echo "❌ Rollback to changeset failed - Pro feature not available!"
+	return 1
 }
 
 rollback_to_tag() {
