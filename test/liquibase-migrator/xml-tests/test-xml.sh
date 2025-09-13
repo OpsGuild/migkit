@@ -89,7 +89,7 @@ test_liquibase_init() {
     print_status "Testing Liquibase initialization..."
     
     # Test --init command
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" -e CHANGELOG_FORMAT=xml liquibase-test --init; then
+    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml liquibase-test --init; then
         print_success "Liquibase initialization successful"
         return 0
     else
@@ -162,7 +162,7 @@ EOF
     # Note: Schema and data will be applied by the migrate script using REFERENCE_SCHEMA
     
     # Generate changelog (will auto-discover all SQL files in /liquibase/schema/)
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" -e LIQ_DB_SNAPSHOT="$REF_DB" -e CHANGELOG_FORMAT=xml -e LIQUIBASE_COMMAND_REFERENCE_URL="jdbc:postgresql://postgres-test:5432/$REF_DB" liquibase-test --generate; then
+    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml -e REF_DB_NAME=testdb_ref_xml liquibase-test --generate; then
         print_success "Initial XML changelog generation successful"
         return 0
     else
@@ -175,7 +175,7 @@ EOF
 test_apply_changelog() {
     print_status "Testing XML changelog application..."
     
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --update; then
+    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --update; then
         print_success "XML changelog application successful"
         return 0
     else
@@ -504,7 +504,7 @@ EOF
 EOF
 
     # Apply the new changeset
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --update; then
+    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --update; then
         print_success "XML operations changeset applied successfully"
         return 0
     else
@@ -518,7 +518,7 @@ test_rollback_by_count() {
     print_status "Testing rollback by count (3 levels)..."
     
     # Rollback 3 changesets
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback 3; then
+    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback 3; then
         print_success "Rollback by count (3 levels) successful"
         return 0
     else
@@ -532,7 +532,7 @@ test_rollback_to_changeset() {
     print_status "Testing rollback to specific changeset..."
     
     # Rollback to a specific changeset
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-to-changeset "migkit:add-product-fields"; then
+    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback-to-changeset "migkit:add-product-fields"; then
         print_success "Rollback to changeset successful"
         return 0
     else
@@ -545,7 +545,7 @@ test_rollback_to_changeset() {
 test_rollback_all() {
     print_status "Testing rollback all..."
     
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-all; then
+    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback-all; then
         print_success "Rollback all successful"
         return 0
     else
@@ -558,7 +558,7 @@ test_rollback_all() {
 test_migration_status() {
     print_status "Testing migration status..."
     
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --status; then
+    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --status; then
         print_success "Migration status check successful"
         return 0
     else
@@ -573,7 +573,7 @@ test_rollback_to_date() {
     
     # Rollback to a specific date (yesterday)
     local yesterday=$(date -d "yesterday" +%Y-%m-%d)
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-to-date "$yesterday"; then
+    if docker compose -f ../../docker-compose.yaml run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml -e MAIN_DB_NAME=testdb_xml liquibase-test --rollback-to-date "$yesterday"; then
         print_success "Rollback to date successful"
         return 0
     else

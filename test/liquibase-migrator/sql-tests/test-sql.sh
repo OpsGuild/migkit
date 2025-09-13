@@ -24,6 +24,49 @@ TESTS_PASSED=0
 TESTS_FAILED=0
 TOTAL_TESTS=0
 
+# Load test environment variables
+load_test_env() {
+    if [ -f "./test.env" ]; then
+        source ./test.env
+        print_status "Loaded test environment variables"
+    elif [ -f "../test.env" ]; then
+        source ../test.env
+        print_status "Loaded test environment variables"
+    else
+        print_error "Test environment file not found! Looked for ./test.env and ../test.env"
+        exit 1
+    fi
+}
+
+# Function to run liquibase with test environment
+run_liquibase_test() {
+    local command="$1"
+    shift
+    local extra_env_vars=("$@")
+    
+    # Build environment variable arguments
+    local env_args=""
+    env_args="$env_args -e MAIN_DB_HOST=$MAIN_DB_HOST"
+    env_args="$env_args -e MAIN_DB_USER=$MAIN_DB_USER"
+    env_args="$env_args -e MAIN_DB_PASSWORD=$MAIN_DB_PASSWORD"
+    env_args="$env_args -e MAIN_DB_NAME=$MAIN_DB_NAME"
+    env_args="$env_args -e REF_DB_HOST=$REF_DB_HOST"
+    env_args="$env_args -e REF_DB_USER=$REF_DB_USER"
+    env_args="$env_args -e REF_DB_PASSWORD=$REF_DB_PASSWORD"
+    env_args="$env_args -e REF_DB_NAME=$REF_DB_NAME"
+    env_args="$env_args -e MAIN_DB_TYPE=$MAIN_DB_TYPE"
+    env_args="$env_args -e REF_DB_TYPE=$REF_DB_TYPE"
+    env_args="$env_args -e CHANGELOG_FORMAT=$CHANGELOG_FORMAT"
+    env_args="$env_args -e SCHEMA_SCRIPTS=$SCHEMA_SCRIPTS"
+    
+    # Add any extra environment variables
+    for var in "${extra_env_vars[@]}"; do
+        env_args="$env_args -e $var"
+    done
+    
+    docker compose -f ../../docker-compose.yaml run --rm $env_args liquibase-test $command
+}
+
 # Print functions
 print_status() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -86,43 +129,13 @@ cleanup_database() {
     print_success "Database state cleaned up"
 }
 
-# Clean changelogs function
-clean_changelogs() {
-    print_status "Cleaning changelogs..."
-    
-    # Get the absolute path to the changelog directory
-    local changelog_dir="/workspace/personal/migkit/sandbox/liquibase-migrator/changelog"
-    
-    # Ensure the directory exists
-    mkdir -p "$changelog_dir"
-    
-    # Clean ALL generated changelog files (be very aggressive)
-    rm -f "$changelog_dir"/changelog-*.sql 2>/dev/null || true
-    rm -f "$changelog_dir"/changelog-initial.sql 2>/dev/null || true
-    rm -f "$changelog_dir"/changelog-*.xml 2>/dev/null || true
-    rm -f "$changelog_dir"/00*.sql 2>/dev/null || true
-    rm -f "$changelog_dir"/01*.sql 2>/dev/null || true
-    rm -f "$changelog_dir"/02*.sql 2>/dev/null || true
-    
-    # Remove any other generated SQL files
-    find "$changelog_dir" -name "*.sql" -not -name "changelog.json" -type f -delete 2>/dev/null || true
-    
-    # Reset the master changelog to completely empty state
-    echo '{"databaseChangeLog": []}' > "$changelog_dir/changelog.json"
-    
-    # Verify cleanup worked
-    local remaining_files=$(find "$changelog_dir" -name "*.sql" -type f | wc -l)
-    if [ "$remaining_files" -eq 0 ]; then
-        print_status "✅ Changelog cleanup successful - no generated files remain"
-    else
-        print_error "⚠️  Warning: $remaining_files SQL files still exist after cleanup"
-        find "$changelog_dir" -name "*.sql" -type f
-    fi
-}
 
 # Setup test environment
 setup_test_environment() {
     print_status "Setting up SQL migration test environment..."
+    
+    # Load test environment variables
+    load_test_env
     
     # No cleanup here - should only be done at main test level
     
@@ -152,7 +165,7 @@ test_liquibase_init() {
     
     # Test --init command (this should just sync the changelog, not apply it)
     
-    if docker compose -f ../../docker-compose.yaml run --rm -e MAIN_DB_HOST=postgres-test -e MAIN_DB_USER=testuser -e MAIN_DB_PASSWORD=testpass -e MAIN_DB_NAME="$TEST_DB" -e REF_DB_HOST=postgres-test -e REF_DB_USER=testuser -e REF_DB_PASSWORD=testpass -e REF_DB_NAME="$REF_DB" -e MAIN_DB_TYPE=postgresql -e REF_DB_TYPE=postgresql liquibase-test --init; then
+    if run_liquibase_test "--init"; then
         print_success "Liquibase initialization successful"
         return 0
     else
@@ -232,7 +245,7 @@ EOF
     # Generate initial changelog using ref-schema.sql for the reference database
     # Note: TEST_DB should be empty, REF_DB will have the reference schema
     # Using --generate which will automatically redirect to --init if no initial changelog exists
-    if docker compose -f ../../docker-compose.yaml run --rm -e MAIN_DB_HOST=postgres-test -e MAIN_DB_USER=testuser -e MAIN_DB_PASSWORD=testpass -e MAIN_DB_NAME="$TEST_DB" -e REF_DB_HOST=postgres-test -e REF_DB_USER=testuser -e REF_DB_PASSWORD=testpass -e REF_DB_NAME="$REF_DB" -e MAIN_DB_TYPE=postgresql -e REF_DB_TYPE=postgresql -e REFERENCE_SCHEMA="/liquibase/schema/ref-schema.sql" liquibase-test --generate; then
+    if run_liquibase_test "--generate" "REFERENCE_SCHEMA=/liquibase/schema/ref-schema.sql"; then
         print_success "Initial changelog generation successful"
         return 0
     else
@@ -248,7 +261,7 @@ test_apply_changelog() {
     
     # Apply the changelog using the standard update command
     # This will apply all changelogs included in the master changelog.json
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test update; then
+    if run_liquibase_test "update"; then
         print_success "Changelog application successful"
         return 0
     else
@@ -378,7 +391,7 @@ EOF
 
     # Now generate a new changelog that captures the differences
     print_status "Generating new changelog from database differences..."
-    if docker compose -f ../../docker-compose.yaml run --rm -e MAIN_DB_HOST=postgres-test -e MAIN_DB_USER=testuser -e MAIN_DB_PASSWORD=testpass -e MAIN_DB_NAME="$TEST_DB" -e REF_DB_HOST=postgres-test -e REF_DB_USER=testuser -e REF_DB_PASSWORD=testpass -e REF_DB_NAME="$REF_DB" -e MAIN_DB_TYPE=postgresql -e REF_DB_TYPE=postgresql liquibase-test --generate; then
+    if run_liquibase_test "--generate"; then
         print_success "New changelog generation successful"
         
         # Check if a new changelog file was created
@@ -390,7 +403,7 @@ EOF
             
             # Apply the new changelog
             print_status "Applying new changelog..."
-            if docker compose -f ../../docker-compose.yaml run --rm -e MAIN_DB_HOST=postgres-test -e MAIN_DB_USER=testuser -e MAIN_DB_PASSWORD=testpass -e MAIN_DB_NAME="$TEST_DB" -e REF_DB_HOST=postgres-test -e REF_DB_USER=testuser -e REF_DB_PASSWORD=testpass -e REF_DB_NAME="$REF_DB" -e MAIN_DB_TYPE=postgresql -e REF_DB_TYPE=postgresql liquibase-test --update; then
+            if run_liquibase_test "--update"; then
                 print_success "New changelog applied successfully"
                 return 0
             else
@@ -412,7 +425,7 @@ test_rollback_by_count() {
     print_status "Testing rollback by count (3 levels)..."
     
     # Rollback 3 changesets
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback 3; then
+    if run_liquibase_test "--rollback 3"; then
         print_success "Rollback by count (3 levels) successful"
         return 0
     else
@@ -433,7 +446,7 @@ test_rollback_to_changeset() {
 test_rollback_all() {
     print_status "Testing rollback all..."
     
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-all; then
+    if run_liquibase_test "--rollback-all"; then
         print_success "Rollback all successful"
         return 0
     else
@@ -446,7 +459,7 @@ test_rollback_all() {
 test_migration_status() {
     print_status "Testing migration status..."
     
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --status; then
+    if run_liquibase_test "--status"; then
         print_success "Migration status check successful"
         return 0
     else
@@ -461,7 +474,7 @@ test_rollback_to_date() {
     
     # Rollback to a specific date (yesterday)
     local yesterday=$(date -d "yesterday" +%Y-%m-%d)
-    if docker compose -f ../../docker-compose.yaml run --rm -e LIQ_DB_HOST=postgres-test -e LIQ_DB_USER=testuser -e LIQ_DB_PASSWORD=testpass -e LIQ_DB_NAME="$TEST_DB" liquibase-test --rollback-to-date "$yesterday"; then
+    if run_liquibase_test "--rollback-to-date $yesterday"; then
         print_success "Rollback to date successful"
         return 0
     else

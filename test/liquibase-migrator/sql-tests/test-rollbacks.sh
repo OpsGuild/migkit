@@ -36,7 +36,7 @@ test_sql_rollbacks() {
     rm -f "$PROJECT_ROOT/sandbox/liquibase-migrator/changelog/changelog-*.sql"
     
     # Generate a changelog with rollbacks
-    if docker compose -f "$COMPOSE_FILE" run --rm --env SCHEMA_SCRIPTS=/liquibase/schema/ref-schema.sql --env CHANGELOG_FORMAT=sql liquibase-test -a; then
+    if docker compose -f "$COMPOSE_FILE" run --rm --env-file ../test.env -e CHANGELOG_FORMAT=sql liquibase-test -a; then
         log_success "SQL changelog generated successfully"
         
         # Check if rollback statements were generated
@@ -67,7 +67,7 @@ test_xml_rollbacks() {
     rm -f "$PROJECT_ROOT/sandbox/liquibase-migrator/changelog/changelog-*.xml"
     
     # Generate a changelog with rollbacks
-    if docker compose -f "$COMPOSE_FILE" run --rm --env SCHEMA_SCRIPTS=/liquibase/schema/ref-schema.sql --env CHANGELOG_FORMAT=xml liquibase-test -a; then
+    if docker compose -f "$COMPOSE_FILE" run --rm --env-file ../test.env -e CHANGELOG_FORMAT=xml liquibase-test -a; then
         log_success "XML changelog generated successfully"
         
         # Check if rollback statements were generated
@@ -95,7 +95,7 @@ test_rollback_quality() {
     log_info "Testing rollback statement quality..."
     
     # Generate a changelog
-    if docker compose -f "$COMPOSE_FILE" run --rm --env SCHEMA_SCRIPTS=/liquibase/schema/ref-schema.sql liquibase-test -a; then
+    if docker compose -f "$COMPOSE_FILE" run --rm --env-file ../test.env liquibase-test -a; then
         local changelog_file=$(find "$PROJECT_ROOT/sandbox/liquibase-migrator/changelog" -name "changelog-*.sql" | head -1)
         if [ -f "$changelog_file" ]; then
             # Check for empty rollbacks
@@ -127,7 +127,7 @@ test_rollback_application() {
     log_info "Testing rollback application..."
     
     # Apply a migration first
-    if docker compose -f "$COMPOSE_FILE" run --rm --env SCHEMA_SCRIPTS=/liquibase/schema/ref-schema.sql liquibase-test -a; then
+    if docker compose -f "$COMPOSE_FILE" run --rm --env-file ../test.env liquibase-test -a; then
         log_success "Migration applied successfully"
         
         # Test rollback (this would need to be implemented in the migrate script)
