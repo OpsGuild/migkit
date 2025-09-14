@@ -1,4 +1,5 @@
-FROM liquibase/liquibase:latest
+ARG LIQUIBASE_VERSION=latest
+FROM liquibase/liquibase:${LIQUIBASE_VERSION}
 
 LABEL org.opencontainers.image.title="Liquibase Migrator"
 LABEL org.opencontainers.image.description="Liquibase database migration tool with custom scripts"
