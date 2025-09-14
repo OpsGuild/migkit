@@ -17,7 +17,7 @@ jobs:
 
       - name: Build test image
         run: |
-          docker build -t migkit/liquibase-migrator:test ./liquibase-migrator
+          docker build -t opsguild/migkit/liquibase-migrator:test ./liquibase-migrator
 
       - name: Start test services
         run: |
