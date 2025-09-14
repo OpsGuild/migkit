@@ -29,13 +29,14 @@ COPY scripts/migrate.sh /usr/local/bin/migrate
 COPY scripts/rollback-sql.sh /liquibase/
 COPY scripts/rollback-xml.sh /liquibase/
 COPY scripts/fix-changelog-order.sh /liquibase/
+COPY scripts/deduplicate-constraints.sh /liquibase/
 
 COPY changelog-schema/changelog.json /liquibase/changelog/changelog.json
 COPY changelog-schema/changelog.xml /liquibase/changelog/changelog.xml
 
 COPY liquibase-default.properties /liquibase/liquibase.properties
 
-RUN chmod +x /usr/local/bin/migrate /liquibase/rollback-sql.sh /liquibase/rollback-xml.sh /liquibase/fix-changelog-order.sh
+RUN chmod +x /usr/local/bin/migrate /liquibase/rollback-sql.sh /liquibase/rollback-xml.sh /liquibase/fix-changelog-order.sh /liquibase/deduplicate-constraints.sh
 
 # Fix permissions for the liquibase-user
 RUN chown -R liquibase-user:liquibase-user /liquibase && \

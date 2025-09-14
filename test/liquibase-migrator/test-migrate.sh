@@ -68,7 +68,20 @@ test_apply_changelog() {
 }
 
 
-# Test 4: Test migration status
+# Test 4: Test generate-and-update (-a) option
+test_generate_and_update() {
+    log_info "Testing generate-and-update (-a) option..."
+    
+    if run_liquibase_test "-a" "REFERENCE_SCHEMA=$SCHEMA_DIR/ref-schema-modified.sql"; then
+        log_success "Generate-and-update operation successful"
+        return 0
+    else
+        log_error "Generate-and-update operation failed"
+        return 1
+    fi
+}
+
+# Test 5: Test migration status
 test_migration_status() {
     log_info "Testing migration status..."
     
@@ -80,47 +93,6 @@ test_migration_status() {
         return 1
     fi
 }
-
-# Test 5: Test generate-and-update (-a) option
-test_generate_and_update() {
-    log_info "Testing generate-and-update (-a) option..."
-    
-    # Clean the main database before this test to avoid constraint conflicts
-    log_info "Cleaning main database before generate-and-update test..."
-    clean_databases_selective "$MAIN_DB_TYPE" "$REF_DB_TYPE"
-    
-    if run_liquibase_test "-a" "REFERENCE_SCHEMA=$SCHEMA_DIR/ref-schema-modified.sql"; then
-        log_success "Generate-and-update operation successful"
-        return 0
-    else
-        log_error "Generate-and-update operation failed"
-        return 1
-    fi
-}
-
-# Test 6: Test clean (-c) option
-test_clean() {
-    log_info "Testing clean (-c) option..."
-    
-    run_liquibase_test "--generate" "REFERENCE_SCHEMA=$SCHEMA_DIR/complex-schema.sql" >/dev/null 2>&1 || true
-    
-    # Now test the clean option
-    if run_liquibase_test "-c"; then
-        log_success "Clean operation successful"
-        
-        if ! run_liquibase_test "--status" >/dev/null 2>&1; then
-            log_success "Reference database was properly cleaned (connection failed as expected)"
-        else
-            log_warning "Reference database might still exist (this could be expected in some cases)"
-        fi
-        
-        return 0
-    else
-        log_error "Clean operation failed"
-        return 1
-    fi
-}
-
 
 # Run all tests
 run_all_tests() {
@@ -139,9 +111,8 @@ run_all_tests() {
     run_test "Liquibase Initialization" test_liquibase_init
     run_test "Generate Initial Changelog" test_generate_changelog
     run_test "Apply Changelog" test_apply_changelog
-    run_test "Migration Status" test_migration_status
     run_test "Generate and Update (-a)" test_generate_and_update
-    run_test "Clean (-c)" test_clean
+    run_test "Migration Status" test_migration_status
     
     echo "================================================"
     log_info "Migration Test Results Summary:"

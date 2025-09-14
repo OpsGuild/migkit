@@ -480,13 +480,9 @@ run_generate() {
         if [ -f "$CHANGELOG_DIR/$CHANGELOG_FILE" ]; then
             ./fix-changelog-order.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
             ./rollback-sql.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
+			./deduplicate-constraints.sh "$CHANGELOG_DIR/$CHANGELOG_FILE" "$CHANGELOG_DIR"
         else
-            echo "⚠️  No changelog file generated - skipping rollback statement addition"
-        fi
-        
-        # Only process initial changelog if it exists and we're not in generate mode
-        if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ] && [ "$GENERATE_MODE" != true ]; then
-            ./rollback-sql.sh "$CHANGELOG_DIR/$INIT_CHANGELOG"
+            echo "⚠️  No changelog file generated - skipping rollback statement addition and deduplication."
         fi
     fi
 
