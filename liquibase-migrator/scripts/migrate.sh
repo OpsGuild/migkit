@@ -6,13 +6,16 @@ set -e
 CHANGELOG_FORMAT=${CHANGELOG_FORMAT:-sql}
 CHANGELOG_DIR=${CHANGELOG_DIR:-/liquibase/changelog}
 SCHEMA_DIR=${SCHEMA_DIR:-/liquibase/schema}
-INIT_CHANGELOG=${INIT_CHANGELOG:-changelog-initial.${CHANGELOG_FORMAT:-sql}}
+DB_TYPE_FOR_CHANGELOG=${MAIN_DB_TYPE:-postgresql}
+DB_TYPE_FOR_CHANGELOG=$(echo "$DB_TYPE_FOR_CHANGELOG" | tr '[:upper:]' '[:lower:]')
+
+INIT_CHANGELOG=${INIT_CHANGELOG:-changelog-initial.${DB_TYPE_FOR_CHANGELOG}.${CHANGELOG_FORMAT:-sql}}
 if [ "$CHANGELOG_FORMAT" = "sql" ]; then
   MASTER_CHANGELOG=${MASTER_CHANGELOG:-$CHANGELOG_DIR/changelog.json}
-  CURRENT_CHANGELOG=changelog-$(date +%Y%m%d-%H%M%S).sql
+  CURRENT_CHANGELOG=changelog-$(date +%Y%m%d-%H%M%S).${DB_TYPE_FOR_CHANGELOG}.sql
 elif [ "$CHANGELOG_FORMAT" = "xml" ]; then
   MASTER_CHANGELOG=${MASTER_CHANGELOG:-$CHANGELOG_DIR/changelog.xml}
-  CURRENT_CHANGELOG=changelog-$(date +%Y%m%d-%H%M%S).xml
+  CURRENT_CHANGELOG=changelog-$(date +%Y%m%d-%H%M%S).${DB_TYPE_FOR_CHANGELOG}.xml
 else
   echo "❌ Unsupported CHANGELOG_FORMAT: $CHANGELOG_FORMAT"
   exit 1
@@ -77,6 +80,9 @@ build_db_url() {
 		mysql)
 			echo "jdbc:mysql://$db_host:$db_port/$db_name"
 			;;
+		mariadb)
+			echo "jdbc:mariadb://$db_host:$db_port/$db_name"
+			;;
 		oracle)
 			echo "jdbc:oracle:thin:@$db_host:$db_port:$db_name"
 			;;
@@ -86,20 +92,30 @@ build_db_url() {
 		h2)
 			echo "jdbc:h2:tcp://$db_host:$db_port/$db_name"
 			;;
+		sqlite)
+			echo "jdbc:sqlite:$db_host/$db_name.db"
+			;;
 		*)
 			echo "jdbc:$db_type://$db_host:$db_port/$db_name"
 			;;
 	esac
 }
 
+
 # Set global Liquibase environment variables
 set_liquibase_env() {
 	export LIQUIBASE_COMMAND_URL="$(build_db_url "$MAIN_DB_TYPE" "$MAIN_DB_HOST" "$MAIN_DB_PORT" "$MAIN_DB_NAME")"
 	export LIQUIBASE_COMMAND_USERNAME="$MAIN_DB_USER"
 	export LIQUIBASE_COMMAND_PASSWORD="$MAIN_DB_PASSWORD"
+	if [ -n "$MAIN_DB_DRIVER" ]; then
+		export LIQUIBASE_COMMAND_DRIVER="$MAIN_DB_DRIVER"
+	fi
 	export LIQUIBASE_COMMAND_REFERENCE_URL="$(build_db_url "$REF_DB_TYPE" "$REF_DB_HOST" "$REF_DB_PORT" "$REF_DB_NAME")"
 	export LIQUIBASE_COMMAND_REFERENCE_USERNAME="$REF_DB_USER"
 	export LIQUIBASE_COMMAND_REFERENCE_PASSWORD="$REF_DB_PASSWORD"
+	if [ -n "$REF_DB_DRIVER" ]; then
+		export LIQUIBASE_COMMAND_REFERENCE_DRIVER="$REF_DB_DRIVER"
+	fi
 }
 
 # Set Liquibase environment variables for reference database
@@ -107,6 +123,9 @@ set_ref_liquibase_env() {
 	export LIQUIBASE_COMMAND_URL="$(build_db_url "$REF_DB_TYPE" "$REF_DB_HOST" "$REF_DB_PORT" "$REF_DB_NAME")"
 	export LIQUIBASE_COMMAND_USERNAME="$REF_DB_USER"
 	export LIQUIBASE_COMMAND_PASSWORD="$REF_DB_PASSWORD"
+	if [ -n "$REF_DB_DRIVER" ]; then
+		export LIQUIBASE_COMMAND_DRIVER="$REF_DB_DRIVER"
+	fi
 }
 
 # Discover schema scripts
@@ -137,24 +156,46 @@ create_ref_db() {
 	local db_user=$2
 	local db_password=$3
 	local db_name=$4
+	local db_type=$5
 	
 	echo "🏗️ Creating reference database $db_name..."
 	
-	# Try to create the database (ignore error if it already exists)
-	if PGPASSWORD="$db_password" psql -h "$db_host" -U "$db_user" -d "postgres" -c "CREATE DATABASE \"$db_name\";" &>/dev/null; then
-		echo "✅ Reference database $db_name created successfully!"
-	elif PGPASSWORD="$db_password" psql -h "$db_host" -U "$db_user" -d "$db_name" -c '\q' &>/dev/null; then
-		echo "ℹ️ Reference database $db_name already exists."
-	else
-		echo "⚠️ Could not create or verify reference database $db_name. Will attempt to continue..."
-	fi
+	case "$db_type" in
+		postgresql)
+			if PGPASSWORD="$db_password" psql -h "$db_host" -U "$db_user" -d "postgres" -c "CREATE DATABASE \"$db_name\";" &>/dev/null; then
+				echo "✅ Reference database $db_name created successfully!"
+			elif PGPASSWORD="$db_password" psql -h "$db_host" -U "$db_user" -d "$db_name" -c '\q' &>/dev/null; then
+				echo "ℹ️ Reference database $db_name already exists."
+			else
+				echo "⚠️ Could not create or verify reference database $db_name. Will attempt to continue..."
+			fi
+			;;
+		mysql|mariadb)
+			if mysql -h "$db_host" -u "$db_user" -p"$db_password" -e "CREATE DATABASE IF NOT EXISTS $db_name;" &>/dev/null; then
+				echo "✅ Reference database $db_name created successfully!"
+			elif mysql -h "$db_host" -u "$db_user" -p"$db_password" -e "USE $db_name;" &>/dev/null; then
+				echo "ℹ️ Reference database $db_name already exists."
+			else
+				echo "⚠️ Could not create or verify reference database $db_name. Will attempt to continue..."
+			fi
+			;;
+		sqlite)
+			if [ -f "/data/$db_name.db" ]; then
+				echo "ℹ️ Reference database $db_name already exists."
+			else
+				echo "✅ Reference database $db_name created successfully!"
+			fi
+			;;
+	esac
 }
 
 wait_for_db() {
 	local db_host=$1
-	local db_user=$2
-	local db_password=$3
-	local db_name=$4
+	local db_port=$2
+	local db_user=$3
+	local db_password=$4
+	local db_name=$5
+	local db_type=$6
 	
 	local RETRIES=20
 	local WAIT=30
@@ -162,10 +203,28 @@ wait_for_db() {
 	echo "⏳ Waiting for $db_name to be ready..."
 
 	for ((i = 1; i <= RETRIES; i++)); do
-		if PGPASSWORD="$db_password" psql -h "$db_host" -U "$db_user" -d "$db_name" -c '\q' &>/dev/null; then
+		local connection_success=false
+		
+		case "$db_type" in
+			postgresql|postgres|mysql|mariadb|oracle|sqlserver|mssql|h2)
+				if nc -z "$db_host" "$db_port" &>/dev/null; then
+					connection_success=true
+				fi
+				;;
+			sqlite)
+				# For SQLite, just check if the database file exists or can be created
+				# SQLite will create the file if it doesn't exist
+				if [ -f "$db_host/$db_name.db" ] || touch "$db_host/$db_name.db" 2>/dev/null; then
+					connection_success=true
+				fi
+				;;
+		esac
+		
+		if [ "$connection_success" = true ]; then
 			echo "✅ Database $db_name is ready!"
 			return 0
 		fi
+		
 		echo "  Attempt $i/$RETRIES: DB $db_name not ready yet, retrying in $WAITs..."
 		sleep $WAIT
 	done
@@ -179,17 +238,37 @@ run_sql_scripts_on_db() {
     local db_user=$2
     local db_password=$3
     local db_name=$4
+	local db_type=$5
     
     echo "📝 Running SQL scripts on database: $db_name"
 
     for script in "${SCRIPTS[@]}"; do
         if [ -f "$script" ]; then
             echo "  - Running $script on $db_name"
-            PGPASSWORD="$db_password" psql \
-                -h "$db_host" \
-                -U "$db_user" \
-                -d "$db_name" \
-                -f "$script"
+            case "$db_type" in
+                postgresql)
+                    PGPASSWORD="$db_password" psql \
+                        -h "$db_host" \
+                        -U "$db_user" \
+                        -d "$db_name" \
+                        -f "$script"
+                    ;;
+                mysql)
+                    mysql -h "$db_host" \
+                        -u "$db_user" \
+                        -p"$db_password" \
+                        "$db_name" < "$script"
+                    ;;
+                mariadb)
+                    mysql -h "$db_host" \
+                        -u "$db_user" \
+                        -p"$db_password" \
+                        "$db_name" < "$script"
+                    ;;
+                sqlite)
+                    sqlite3 "/data/$db_name.db" < "$script"
+                    ;;
+            esac
         else
             echo "  ⚠️  Skipping missing script: $script"
         fi
@@ -201,8 +280,21 @@ is_database_empty() {
     local db_user=$2
     local db_password=$3
     local db_name=$4
+	local db_type=$5
     
-    local table_count=$(PGPASSWORD="$db_password" psql -h "$db_host" -U "$db_user" -d "$db_name" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null || echo "0")
+    local table_count=0
+    case "$db_type" in
+        "postgresql")
+            table_count=$(PGPASSWORD="$db_password" psql -h "$db_host" -U "$db_user" -d "$db_name" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null || echo "0")
+            ;;
+        "mariadb"|"mysql")
+            table_count=$(mysql -h "$db_host" -u "$db_user" -p"$db_password" "$db_name" -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$db_name';" 2>/dev/null | tail -1 || echo "0")
+            ;;
+        "sqlite")
+            table_count=$(sqlite3 "$db_name" "SELECT COUNT(*) FROM sqlite_master WHERE type='table';" 2>/dev/null || echo "0")
+            ;;
+    esac
+    
     [ "$table_count" -eq 0 ]
 }
 
@@ -282,10 +374,10 @@ rollback_all() {
 
 generate_init_changelog() {
     if [ ! -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
-        if is_database_empty "$MAIN_DB_HOST" "$MAIN_DB_USER" "$MAIN_DB_PASSWORD" "$MAIN_DB_NAME"; then
+        if is_database_empty "$MAIN_DB_HOST" "$MAIN_DB_USER" "$MAIN_DB_PASSWORD" "$MAIN_DB_NAME" "$MAIN_DB_TYPE"; then
             echo "📋 Main database is empty, generating changelog from reference database..."
 
-            run_sql_scripts_on_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
+            run_sql_scripts_on_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME" "$REF_DB_TYPE"
             set_ref_liquibase_env
         else
             echo "📋 Main database has existing schema, generating changelog from current state..."
@@ -317,7 +409,7 @@ run_init() {
 
     generate_init_changelog
 
-    if is_database_empty "$MAIN_DB_HOST" "$MAIN_DB_USER" "$MAIN_DB_PASSWORD" "$MAIN_DB_NAME"; then
+    if is_database_empty "$MAIN_DB_HOST" "$MAIN_DB_USER" "$MAIN_DB_PASSWORD" "$MAIN_DB_NAME" "$MAIN_DB_TYPE"; then
         echo "📋 Applying initial changelog to main database..."
         set_liquibase_env
         liquibase update
@@ -343,8 +435,9 @@ run_generate() {
     fi
     
     # Initial changelog exists, proceed with diff generation
-    create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
-    run_sql_scripts_on_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
+    create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME" "$REF_DB_TYPE"
+	wait_for_db "$REF_DB_HOST" "$REF_DB_PORT" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME" "$REF_DB_TYPE"
+	run_sql_scripts_on_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME" "$REF_DB_TYPE"
 
     CHANGELOG_FILE=$CURRENT_CHANGELOG
     
@@ -381,7 +474,7 @@ run_generate() {
 }
 
 run_update() {
-    create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
+    create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME" "$REF_DB_TYPE"
     echo "🚀 Applying database changes..."
     liquibase update
     if [ $? -eq 0 ]; then
@@ -398,7 +491,23 @@ run_update() {
 
 run_cleanup() {
     printf "\n🧹 Cleaning up: Dropping temporary database...\n"
-    PGPASSWORD="$REF_DB_PASSWORD" psql -h "$REF_DB_HOST" -U "$REF_DB_USER" -d "postgres" -c "DROP DATABASE IF EXISTS \"$REF_DB_NAME\";"
+
+	local db_type=$REF_DB_TYPE
+    
+    case "$db_type" in
+        postgresql)
+            PGPASSWORD="$REF_DB_PASSWORD" psql -h "$REF_DB_HOST" -U "$REF_DB_USER" -d "postgres" -c "DROP DATABASE IF EXISTS \"$REF_DB_NAME\";"
+            ;;
+        mysql)
+            mysql -h "$REF_DB_HOST" -u "$REF_DB_USER" -p"$REF_DB_PASSWORD" -e "DROP DATABASE IF EXISTS \`$REF_DB_NAME\`;"
+            ;;
+        mariadb)
+            mysql -h "$REF_DB_HOST" -u "$REF_DB_USER" -p"$REF_DB_PASSWORD" -e "DROP DATABASE IF EXISTS \`$REF_DB_NAME\`;"
+            ;;
+        sqlite)
+            rm -f "/data/$REF_DB_NAME.db"
+            ;;
+    esac
     exit 0
 }
 
@@ -620,9 +729,7 @@ parse_arguments() {
 				exec /bin/sh
 				;;
 			*)
-				echo "❌ Unknown option: $1"
-				echo "Use --help for usage information"
-				exit 1
+				exec "$@"
 				;;
 		esac
 	done
@@ -638,11 +745,11 @@ main() {
 	set_liquibase_env
 	
 	# Create reference database first
-	create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
+	create_ref_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME" "$REF_DB_TYPE"
 	
 	# Wait for both databases
-	wait_for_db "$MAIN_DB_HOST" "$MAIN_DB_USER" "$MAIN_DB_PASSWORD" "$MAIN_DB_NAME"
-	wait_for_db "$REF_DB_HOST" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME"
+	wait_for_db "$MAIN_DB_HOST" "$MAIN_DB_PORT"  "$MAIN_DB_USER" "$MAIN_DB_PASSWORD" "$MAIN_DB_NAME" "$MAIN_DB_TYPE"
+	wait_for_db "$REF_DB_HOST" "$MAIN_DB_PORT" "$REF_DB_USER" "$REF_DB_PASSWORD" "$REF_DB_NAME" "$REF_DB_TYPE"
 
 	if [ "$INIT" = true ]; then
 		run_init
@@ -656,7 +763,6 @@ main() {
 		run_update
 	fi
 
-	# Handle rollback operations
 	if [ "$ROLLBACK_MODE" = true ]; then
 		run_rollback_operations
 	fi

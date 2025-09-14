@@ -32,7 +32,7 @@ test_liquibase_init() {
 # Test 2: Generate chngelog from reference schema
 test_generate_changelog() {
     
-    if run_liquibase_test "--generate" "REFERENCE_SCHEMA=/liquibase/schema/ref-schema.sql"; then
+    if run_liquibase_test "--generate" "REFERENCE_SCHEMA=$SCHEMA_DIR/ref-schema.sql"; then
         log_success "changelog generation successful"
 
         # Check if a new changelog file was created
@@ -81,22 +81,66 @@ test_migration_status() {
     fi
 }
 
+# Test 5: Test generate-and-update (-a) option
+test_generate_and_update() {
+    log_info "Testing generate-and-update (-a) option..."
+    
+    if run_liquibase_test "-a" "REFERENCE_SCHEMA=$SCHEMA_DIR/ref-schema-modified.sql"; then
+        log_success "Generate-and-update operation successful"
+        return 0
+    else
+        log_error "Generate-and-update operation failed"
+        return 1
+    fi
+}
+
+# Test 6: Test clean (-c) option
+test_clean() {
+    log_info "Testing clean (-c) option..."
+    
+    run_liquibase_test "--generate" "REFERENCE_SCHEMA=$SCHEMA_DIR/complex-schema.sql" >/dev/null 2>&1 || true
+    
+    # Now test the clean option
+    if run_liquibase_test "-c"; then
+        log_success "Clean operation successful"
+        
+        if ! run_liquibase_test "--status" >/dev/null 2>&1; then
+            log_success "Reference database was properly cleaned (connection failed as expected)"
+        else
+            log_warning "Reference database might still exist (this could be expected in some cases)"
+        fi
+        
+        return 0
+    else
+        log_error "Clean operation failed"
+        return 1
+    fi
+}
+
 
 # Run all tests
 run_all_tests() {
-    log_info "Starting Comprehensive Liquibase SQL Migration Test Suite..."
+    local main_db_type="${1:-$MAIN_DB_TYPE}"
+    local ref_db_type="${2:-$REF_DB_TYPE}"
+    
+    log_info "Starting Comprehensive Liquibase Migration Test Suite..."
     echo "================================================"
     
-    # Setup test environment (load env vars, clean databases, etc.)
-    setup_test_environment
+    # Load test environment variables first
+    load_test_env
+    
+    # Setup test environment with selective cleanup
+    setup_test_environment "$main_db_type" "$ref_db_type"
     
     run_test "Liquibase Initialization" test_liquibase_init
     run_test "Generate Initial Changelog" test_generate_changelog
     run_test "Apply Changelog" test_apply_changelog
     run_test "Migration Status" test_migration_status
+    run_test "Generate and Update (-a)" test_generate_and_update
+    run_test "Clean (-c)" test_clean
     
     echo "================================================"
-    log_info "SQL Migration Test Results Summary:"
+    log_info "Migration Test Results Summary:"
     log_success "Tests Passed: $TESTS_PASSED"
     if [ $TESTS_FAILED -gt 0 ]; then
         log_error "Tests Failed: $TESTS_FAILED"
@@ -104,10 +148,10 @@ run_all_tests() {
     log_info "Total Tests: $TOTAL_TESTS"
     
     if [ $TESTS_FAILED -eq 0 ]; then
-        log_success "All SQL migration tests passed! ✅"
+        log_success "All migration tests passed! ✅"
         exit 0
     else
-        log_error "Some SQL migration tests failed! ❌"
+        log_error "Some migration tests failed! ❌"
         exit 1
     fi
 }
@@ -131,4 +175,7 @@ run_test() {
     echo "----------------------------------------"
 }
 
-run_all_tests
+# Only run tests if this script is executed directly, not when sourced
+if [ "${BASH_SOURCE[0]}" == "${0}" ]; then
+    run_all_tests
+fi

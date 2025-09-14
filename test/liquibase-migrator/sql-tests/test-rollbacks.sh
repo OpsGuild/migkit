@@ -2,16 +2,19 @@
 
 # Comprehensive Liquibase Rollback Test Suite
 # Tests rollback functionality for both SQL and XML formats
+# Focused on migration rollback scenarios
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/../common-test-functions.sh" ]; then
-    source "$SCRIPT_DIR/../common-test-functions.sh"
-elif [ -f "test/liquibase-migrator/common-test-functions.sh" ]; then
-    source "test/liquibase-migrator/common-test-functions.sh"
+PROJECT_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
+TEST_MIGRATE_SCRIPT="$PROJECT_ROOT/test/liquibase-migrator/test-migrate.sh"
+
+# Source test-migrate.sh to get access to migration functions and common test functions
+if [ -f "$TEST_MIGRATE_SCRIPT" ]; then
+    source "$TEST_MIGRATE_SCRIPT"
 else
-    echo "Error: common-test-functions.sh not found!"
+    echo "Error: test-migrate.sh not found at $TEST_MIGRATE_SCRIPT"
     exit 1
 fi
 
@@ -21,11 +24,17 @@ TESTS_FAILED=0
 TOTAL_TESTS=0
 
 
-# Test 5: Test rollback by count (3 levels)
+# Test 1: Rollback by count after migration
 test_rollback_by_count() {
-    log_info "Testing rollback by count (3 levels)..."
+    log_info "Testing rollback by count after migration..."
     
-    # Rollback 3 changesets
+    # First apply a migration
+    if ! run_liquibase_test "-a"; then
+        log_error "Failed to apply migration for rollback testing"
+        return 1
+    fi
+    
+    # Then rollback 3 changesets
     if run_liquibase_test "--rollback 3"; then
         log_success "Rollback by count (3 levels) successful"
         return 0
@@ -35,7 +44,7 @@ test_rollback_by_count() {
     fi
 }
 
-# Test 6: Test rollback to changeset (skipped - requires Liquibase Pro)
+# Test 2: Rollback to changeset (skipped - requires Liquibase Pro)
 test_rollback_to_changeset() {
     log_info "Testing rollback to specific changeset..."
     log_warning "Skipping rollback-to-changeset test - requires Liquibase Pro features"
@@ -43,10 +52,17 @@ test_rollback_to_changeset() {
     return 0
 }
 
-# Test 7: Test rollback all
+# Test 3: Rollback all after migration
 test_rollback_all() {
-    log_info "Testing rollback all..."
+    log_info "Testing rollback all after migration..."
     
+    # First apply a migration
+    if ! run_liquibase_test "-a"; then
+        log_error "Failed to apply migration for rollback testing"
+        return 1
+    fi
+    
+    # Then rollback all
     if run_liquibase_test "--rollback-all"; then
         log_success "Rollback all successful"
         return 0
@@ -56,9 +72,15 @@ test_rollback_all() {
     fi
 }
 
-# Test 9: Test rollback to date
+# Test 4: Rollback to date after migration
 test_rollback_to_date() {
-    log_info "Testing rollback to specific date..."
+    log_info "Testing rollback to specific date after migration..."
+    
+    # First apply a migration
+    if ! run_liquibase_test "-a"; then
+        log_error "Failed to apply migration for rollback testing"
+        return 1
+    fi
     
     # Rollback to a specific date (yesterday)
     local yesterday=$(date -d "yesterday" +%Y-%m-%d)
@@ -83,8 +105,7 @@ test_rollback_statement_quality() {
     log_info "Ensuring main database is completely empty before generation..."
     get_paths
     # Drop and recreate the main database to ensure it's completely clean
-    docker compose -f "$COMPOSE_FILE" exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $MAIN_DB_NAME;" 2>/dev/null || true
-    docker compose -f "$COMPOSE_FILE" exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $MAIN_DB_NAME;" 2>/dev/null || true
+    clean_databases
     
     # Generate a changelog
     if run_liquibase_test "-a"; then
@@ -127,8 +148,7 @@ test_rollback_application() {
     log_info "Ensuring main database is completely empty before generation..."
     get_paths
     # Drop and recreate the main database to ensure it's completely clean
-    docker compose -f "$COMPOSE_FILE" exec -T postgres-test psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS $MAIN_DB_NAME;" 2>/dev/null || true
-    docker compose -f "$COMPOSE_FILE" exec -T postgres-test psql -U testuser -d postgres -c "CREATE DATABASE $MAIN_DB_NAME;" 2>/dev/null || true
+    clean_databases
     
     # Apply a migration first
     if run_liquibase_test "-a"; then
@@ -149,12 +169,19 @@ run_all_tests() {
     log_info "Starting Comprehensive Liquibase Rollback Test Suite..."
     echo "================================================"
     
-    # Setup
+    # Load test environment variables first
+    load_test_env
+    
+    # Setup test environment (load env vars, clean databases, etc.)
     setup_test_environment
     
-    # Run tests in the correct order
+    # Run rollback tests in the correct order
     run_test "Rollback Statement Quality" test_rollback_statement_quality
     run_test "Rollback Application" test_rollback_application
+    run_test "Rollback by Count" test_rollback_by_count
+    run_test "Rollback to Changeset" test_rollback_to_changeset
+    run_test "Rollback All" test_rollback_all
+    run_test "Rollback to Date" test_rollback_to_date
     
     # Print results
     echo "================================================"

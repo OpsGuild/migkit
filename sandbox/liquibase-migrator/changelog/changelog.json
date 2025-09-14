@@ -2,13 +2,25 @@
   "databaseChangeLog": [
     {
       "include": {
-        "file": "changelog-initial.sql",
+        "file": "changelog-initial.postgresql.sql",
         "relativeToChangelogFile": true
       }
     },
     {
       "include": {
-        "file": "changelog-20250913-174711.sql",
+        "file": "changelog-20250914-063403.postgresql.sql",
+        "relativeToChangelogFile": true
+      }
+    },
+    {
+      "include": {
+        "file": "changelog-20250914-063434.postgresql.sql",
+        "relativeToChangelogFile": true
+      }
+    },
+    {
+      "include": {
+        "file": "changelog-20250914-063458.postgresql.sql",
         "relativeToChangelogFile": true
       }
     }

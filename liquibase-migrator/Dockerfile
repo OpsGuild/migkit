@@ -9,6 +9,9 @@ LABEL org.opencontainers.image.licenses="MIT"
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
       postgresql-client \
+      mysql-client \
+      sqlite3 \
+      netcat-openbsd \
       jq \
       bash \
       curl \
