@@ -45,7 +45,7 @@ jobs:
           tags: |
             type=raw,value=latest
             type=ref,event=tag
-            type=semver,pattern={{raw}}
+            type=raw,value={{trimPrefix(github.ref_name, 'v')}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
