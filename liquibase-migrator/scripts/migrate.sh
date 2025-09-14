@@ -130,12 +130,12 @@ set_ref_liquibase_env() {
 
 # Discover schema scripts
 discover_schema_scripts() {
-	if [ -n "$SCHEMA_SCRIPTS" ]; then
-		# Parse comma-separated list of scripts
-		IFS=',' read -ra SCRIPTS <<< "$SCHEMA_SCRIPTS"
-	elif [ -n "$REFERENCE_SCHEMA" ]; then
+	if [ -n "$REFERENCE_SCHEMA" ]; then
 		# Single script override
 		SCRIPTS=("$REFERENCE_SCHEMA")
+	elif [ -n "$SCHEMA_SCRIPTS" ]; then
+		# Parse comma-separated list of scripts
+		IFS=',' read -ra SCRIPTS <<< "$SCHEMA_SCRIPTS"
 	else
 		# Auto-discover all SQL files in schema directory
 		if [ -d "$SCHEMA_DIR" ]; then
@@ -384,10 +384,20 @@ generate_init_changelog() {
             set_liquibase_env
         fi
 
-        liquibase --changelog-file="$CHANGELOG_DIR/$INIT_CHANGELOG" generateChangeLog \
-            --includeSchema=true \
-            --includeTablespace=true \
-            --includeCatalog=true
+        # Build liquibase command based on database type
+        # For MariaDB/MySQL, don't include schema/catalog names as they cause issues
+        # For other databases, include them for proper schema management
+        local liquibase_cmd="liquibase --changelog-file=\"$CHANGELOG_DIR/$INIT_CHANGELOG\" generateChangeLog"
+        
+        if [ "$MAIN_DB_TYPE" = "mariadb" ] || [ "$MAIN_DB_TYPE" = "mysql" ]; then
+            # For MariaDB/MySQL, don't include schema/catalog to avoid database name prefixes
+            liquibase_cmd="$liquibase_cmd --includeSchema=false --includeCatalog=false"
+        else
+            # For other databases (PostgreSQL, Oracle, etc.), include schema/catalog
+            liquibase_cmd="$liquibase_cmd --includeSchema=true --includeTablespace=true --includeCatalog=true"
+        fi
+
+        eval $liquibase_cmd
 
         if [ -f "$CHANGELOG_DIR/$INIT_CHANGELOG" ]; then
             if [ "$CHANGELOG_FORMAT" = "xml" ]; then
@@ -441,20 +451,30 @@ run_generate() {
 
     CHANGELOG_FILE=$CURRENT_CHANGELOG
     
+    # Build liquibase diff-changelog command based on database type
+    # For MariaDB/MySQL, don't include schema/catalog names as they cause issues
+    # For other databases, include them for proper schema management
+    local liquibase_diff_cmd="liquibase diff-changelog --changelog-file=\"$CHANGELOG_DIR/$CHANGELOG_FILE\""
+    
+    if [ "$MAIN_DB_TYPE" = "mariadb" ] || [ "$MAIN_DB_TYPE" = "mysql" ]; then
+        # For MariaDB/MySQL, don't include schema/catalog to avoid database name prefixes
+        liquibase_diff_cmd="$liquibase_diff_cmd --include-schema=false --include-catalog=false"
+    else
+        # For other databases (PostgreSQL, Oracle, etc.), include schema/catalog
+        liquibase_diff_cmd="$liquibase_diff_cmd --include-schema=true --include-tablespace=true --include-catalog=true"
+    fi
+    
+    # Add options to improve diff generation accuracy
+    liquibase_diff_cmd="$liquibase_diff_cmd --diff-types=tables,columns,indexes,foreignkeys,primarykeys,uniqueconstraints"
+    
+
     if [ "$CHANGELOG_FORMAT" = "xml" ]; then
-        liquibase diff-changelog \
-            --changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" \
-            --include-schema=true \
-            --include-tablespace=true \
-            --include-catalog=true
+        eval $liquibase_diff_cmd
         include_changelog_if_valid "$CHANGELOG_FILE"
         
         ./rollback-xml.sh "$CHANGELOG_DIR/$CHANGELOG_FILE"
     else
-        liquibase diff-changelog \
-            --changelog-file="$CHANGELOG_DIR/$CHANGELOG_FILE" \
-            --include-schema=true --include-tablespace=true \
-            --include-catalog=true
+        eval $liquibase_diff_cmd
         include_changelog_if_valid "$CHANGELOG_FILE"
         
         if [ -f "$CHANGELOG_DIR/$CHANGELOG_FILE" ]; then

@@ -97,6 +97,8 @@ load_test_env() {
         log_error "Test environment file not found! Looked for $TEST_ENV_FILE and ../test.env"
         exit 1
     fi
+    
+    export SCHEMA_DIR="/liquibase/schema/$MAIN_DB_TYPE"
 }
 
 # Function to clean changelogs

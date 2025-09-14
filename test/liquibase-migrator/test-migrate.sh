@@ -85,6 +85,10 @@ test_migration_status() {
 test_generate_and_update() {
     log_info "Testing generate-and-update (-a) option..."
     
+    # Clean the main database before this test to avoid constraint conflicts
+    log_info "Cleaning main database before generate-and-update test..."
+    clean_databases_selective "$MAIN_DB_TYPE" "$REF_DB_TYPE"
+    
     if run_liquibase_test "-a" "REFERENCE_SCHEMA=$SCHEMA_DIR/ref-schema-modified.sql"; then
         log_success "Generate-and-update operation successful"
         return 0
