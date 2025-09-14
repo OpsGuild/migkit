@@ -3,47 +3,15 @@ name: Build and Push Docker Image
 on:
   push:
     tags: [ 'v*' ]
-  pull_request:
-    branches: [ main ]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/liquibase-migrator
 
 jobs:
-  # test:
-  #   name: Run Tests
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v3
-  #
-  #     - name: Build test image
-  #       run: |
-  #         docker build -t migkit/liquibase-migrator:test ./liquibase-migrator
-  #
-  #     - name: Start test services
-  #       run: |
-  #         docker-compose --profile test up -d postgres-test
-  #         sleep 10
-  #
-  #     - name: Run tests
-  #       run: |
-  #         chmod +x ./test.sh
-  #         ./test.sh
-  #
-  #     - name: Cleanup test environment
-  #       if: always()
-  #       run: |
-  #         docker-compose --profile test down -v --remove-orphans
-
   build-and-push:
     name: Build and Push
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
       packages: write
@@ -77,6 +45,7 @@ jobs:
           tags: |
             type=raw,value=latest
             type=ref,event=tag
+            type=semver,pattern={{raw}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
