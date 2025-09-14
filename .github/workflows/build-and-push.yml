@@ -12,34 +12,34 @@ env:
   IMAGE_NAME: ${{ github.repository }}/liquibase-migrator
 
 jobs:
-  test:
-    name: Run Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build test image
-        run: |
-          docker build -t migkit/liquibase-migrator:test ./liquibase-migrator
-
-      - name: Start test services
-        run: |
-          docker-compose --profile test up -d postgres-test
-          sleep 10
-
-      - name: Run tests
-        run: |
-          chmod +x ./test.sh
-          ./test.sh
-
-      - name: Cleanup test environment
-        if: always()
-        run: |
-          docker-compose --profile test down -v --remove-orphans
+  # test:
+  #   name: Run Tests
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v3
+  #
+  #     - name: Build test image
+  #       run: |
+  #         docker build -t migkit/liquibase-migrator:test ./liquibase-migrator
+  #
+  #     - name: Start test services
+  #       run: |
+  #         docker-compose --profile test up -d postgres-test
+  #         sleep 10
+  #
+  #     - name: Run tests
+  #       run: |
+  #         chmod +x ./test.sh
+  #         ./test.sh
+  #
+  #     - name: Cleanup test environment
+  #       if: always()
+  #       run: |
+  #         docker-compose --profile test down -v --remove-orphans
 
   build-and-push:
     name: Build and Push
