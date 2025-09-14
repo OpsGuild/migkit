@@ -95,18 +95,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Generate SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          format: spdx-json
-          output-file: sbom.spdx.json
-
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom
-          path: sbom.spdx.json
+      # SBOM generation commented out due to image availability issues
+      # - name: Generate SBOM
+      #   uses: anchore/sbom-action@v0
+      #   with:
+      #     image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.meta.outputs.digest }}
+      #     format: spdx-json
+      #     output-file: sbom.spdx.json
+      #
+      # - name: Upload SBOM
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: sbom
+      #     path: sbom.spdx.json
 
       - name: Output image information
         run: |
