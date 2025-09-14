@@ -46,14 +46,23 @@ jobs:
           tags: |
             type=raw,value=latest
             type=ref,event=tag
-            type=raw,value={{trimPrefix(github.ref_name, 'v')}}
+
+      - name: Create additional tags
+        id: additional-tags
+        run: |
+          # Remove 'v' prefix from tag name
+          VERSION_TAG=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+          echo "version-tag=$VERSION_TAG" >> $GITHUB_OUTPUT
+          echo "Additional tag: $VERSION_TAG"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./liquibase-migrator
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.additional-tags.outputs.version-tag }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
           build-args: |
