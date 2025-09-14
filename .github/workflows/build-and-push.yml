@@ -76,7 +76,9 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
-            type=semver,pattern={{raw}}
+            type=semver,pattern={{major}}.{{minor}}.{{patch}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -111,6 +113,7 @@ jobs:
           echo "Tags: ${{ steps.meta.outputs.tags }}"
           echo "Digest: ${{ steps.meta.outputs.digest }}"
           echo "Liquibase version used: ${{ steps.liquibase-version.outputs.LIQUIBASE_VERSION }}"
+          echo "image-digest=${{ steps.meta.outputs.digest }}" >> $GITHUB_OUTPUT
 
   security-scan:
     name: Security Scan
@@ -125,6 +128,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Wait for image to be available
+        run: |
+          echo "Waiting for image to be available in registry..."
+          sleep 30
+          
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
