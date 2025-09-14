@@ -16,7 +16,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       bash \
       curl \
       ca-certificates \
+      wget \
     && rm -rf /var/lib/apt/lists/*
+
+# Download and install MySQL JDBC driver
+RUN wget -O /tmp/mysql-connector-java-8.0.33.jar \
+    https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.0.33/mysql-connector-j-8.0.33.jar \
+    && mkdir -p /liquibase/lib \
+    && cp /tmp/mysql-connector-java-8.0.33.jar /liquibase/lib/ \
+    && rm /tmp/mysql-connector-java-8.0.33.jar
 
 # Create a user with UID 1000 to match the host user
 RUN groupadd -g 1000 liquibase-user && \

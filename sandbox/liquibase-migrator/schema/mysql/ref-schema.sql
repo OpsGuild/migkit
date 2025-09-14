@@ -11,8 +11,8 @@ CREATE TABLE users (
     status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
     phone VARCHAR(20),  -- Additional field
     last_login TIMESTAMP NULL,  -- Additional field
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01'
 );
 
 -- Categories table
@@ -21,9 +21,9 @@ CREATE TABLE categories (
     name VARCHAR(100) NOT NULL,
     description TEXT,
     parent_id INT,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
     FOREIGN KEY (parent_id) REFERENCES categories(id)
 );
 
@@ -38,10 +38,10 @@ CREATE TABLE posts (
     excerpt TEXT,
     status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
     view_count INT DEFAULT 0,  -- Additional field
-    featured BOOLEAN DEFAULT false,  -- Additional field
+    featured TINYINT(1) DEFAULT 0,  -- Additional field
     published_at TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
@@ -51,8 +51,8 @@ CREATE TABLE tags (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(50) UNIQUE NOT NULL,
     color VARCHAR(7) DEFAULT '#007bff',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01'
 );
 
 -- Post tags junction table
@@ -72,8 +72,8 @@ CREATE TABLE comments (
     parent_id INT,
     content TEXT NOT NULL,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'spam')),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
     FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
@@ -87,8 +87,8 @@ CREATE TABLE user_profiles (
     website VARCHAR(200),
     location VARCHAR(100),
     birth_date DATE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -98,7 +98,7 @@ CREATE TABLE user_sessions (
     user_id INT,
     session_token VARCHAR(255) UNIQUE NOT NULL,
     expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

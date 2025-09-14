@@ -17,11 +17,11 @@ INSERT INTO categories (name, description, is_active) VALUES
 
 -- Insert test posts
 INSERT INTO posts (title, slug, content, excerpt, user_id, category_id, status, published_at) VALUES
-('Getting Started with Docker', 'getting-started-with-docker', 'Docker is a powerful containerization platform...', 'Learn the basics of Docker', 1, 1, 'published', CURRENT_TIMESTAMP),
-('Healthy Living Tips', 'healthy-living-tips', 'Maintaining a healthy lifestyle is important...', 'Tips for a healthier life', 2, 2, 'published', CURRENT_TIMESTAMP),
+('Getting Started with Docker', 'getting-started-with-docker', 'Docker is a powerful containerization platform...', 'Learn the basics of Docker', 1, 1, 'published', '2024-01-01 00:00:00'),
+('Healthy Living Tips', 'healthy-living-tips', 'Maintaining a healthy lifestyle is important...', 'Tips for a healthier life', 2, 2, 'published', '2024-01-01 00:00:00'),
 ('Startup Success Stories', 'startup-success-stories', 'Many successful startups share common traits...', 'What makes startups successful', 3, 3, 'draft', NULL),
-('Advanced SQL Techniques', 'advanced-sql-techniques', 'SQL can be much more powerful than basic queries...', 'Master advanced SQL', 1, 1, 'published', CURRENT_TIMESTAMP),
-('Work-Life Balance', 'work-life-balance', 'Finding the right balance between work and life...', 'Balancing work and personal life', 4, 2, 'published', CURRENT_TIMESTAMP);
+('Advanced SQL Techniques', 'advanced-sql-techniques', 'SQL can be much more powerful than basic queries...', 'Master advanced SQL', 1, 1, 'published', '2024-01-01 00:00:00'),
+('Work-Life Balance', 'work-life-balance', 'Finding the right balance between work and life...', 'Balancing work and personal life', 4, 2, 'published', '2024-01-01 00:00:00');
 
 -- Insert test tags
 INSERT INTO tags (name, color) VALUES

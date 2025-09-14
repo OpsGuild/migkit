@@ -1,1 +1,10 @@
-{"databaseChangeLog": []}
+{
+  "databaseChangeLog": [
+    {
+      "include": {
+        "file": "changelog-initial.mysql.sql",
+        "relativeToChangelogFile": true
+      }
+    }
+  ]
+}

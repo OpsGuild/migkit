@@ -10,7 +10,7 @@ CREATE TRIGGER update_users_updated_at
     BEFORE UPDATE ON users 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 -- Categories table trigger
@@ -19,7 +19,7 @@ CREATE TRIGGER update_categories_updated_at
     BEFORE UPDATE ON categories 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 -- Posts table trigger
@@ -28,7 +28,7 @@ CREATE TRIGGER update_posts_updated_at
     BEFORE UPDATE ON posts 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 -- Tags table trigger
@@ -37,7 +37,7 @@ CREATE TRIGGER update_tags_updated_at
     BEFORE UPDATE ON tags 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 -- Comments table trigger
@@ -46,7 +46,7 @@ CREATE TRIGGER update_comments_updated_at
     BEFORE UPDATE ON comments 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 -- User profiles table trigger
@@ -55,7 +55,7 @@ CREATE TRIGGER update_user_profiles_updated_at
     BEFORE UPDATE ON user_profiles 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 DELIMITER ;

@@ -11,8 +11,8 @@ CREATE TABLE users (
     status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
     phone VARCHAR(20),  -- Additional field
     last_login TIMESTAMP NULL,  -- Additional field
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01'
 );
 
 -- Categories table
@@ -21,9 +21,9 @@ CREATE TABLE categories (
     name VARCHAR(100) NOT NULL,
     description TEXT,
     parent_id INT,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
     FOREIGN KEY (parent_id) REFERENCES categories(id)
 );
 
@@ -38,10 +38,10 @@ CREATE TABLE posts (
     excerpt TEXT,
     status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
     view_count INT DEFAULT 0,  -- Additional field
-    featured BOOLEAN DEFAULT false,  -- Additional field
+    featured TINYINT(1) DEFAULT 0,  -- Additional field
     published_at TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
@@ -52,8 +52,8 @@ CREATE TABLE tags (
     name VARCHAR(50) UNIQUE NOT NULL,
     color VARCHAR(7) DEFAULT '#007bff',
     description TEXT,  -- Additional field
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01'
 );
 
 -- Post tags junction table
@@ -73,8 +73,8 @@ CREATE TABLE comments (
     parent_id INT,
     content TEXT NOT NULL,
     status VARCHAR(20) DEFAULT 'approved' CHECK (status IN ('pending', 'approved', 'rejected')),  -- Changed default
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
     FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,  -- Changed from SET NULL
     FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
@@ -89,8 +89,8 @@ CREATE TABLE user_profiles (
     website VARCHAR(255),  -- Changed size
     location VARCHAR(100),
     birth_date DATE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -100,8 +100,8 @@ CREATE TABLE settings (
     `key` VARCHAR(100) UNIQUE NOT NULL,  -- key is a reserved word in MySQL
     value TEXT,
     description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
+    updated_at TIMESTAMP DEFAULT '1970-01-01 00:00:01'
 );
 
 -- NEW TABLE: Notifications table (this is new)
@@ -111,8 +111,8 @@ CREATE TABLE notifications (
     title VARCHAR(200) NOT NULL,
     message TEXT,
     type VARCHAR(50) DEFAULT 'info',
-    is_read BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_read TINYINT(1) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT '1970-01-01 00:00:01',
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -149,7 +149,7 @@ CREATE TRIGGER update_users_updated_at
     BEFORE UPDATE ON users 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 DROP TRIGGER IF EXISTS update_categories_updated_at$$
@@ -157,7 +157,7 @@ CREATE TRIGGER update_categories_updated_at
     BEFORE UPDATE ON categories 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 DROP TRIGGER IF EXISTS update_posts_updated_at$$
@@ -165,7 +165,7 @@ CREATE TRIGGER update_posts_updated_at
     BEFORE UPDATE ON posts 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 DROP TRIGGER IF EXISTS update_tags_updated_at$$
@@ -173,7 +173,7 @@ CREATE TRIGGER update_tags_updated_at
     BEFORE UPDATE ON tags 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 DROP TRIGGER IF EXISTS update_comments_updated_at$$
@@ -181,7 +181,7 @@ CREATE TRIGGER update_comments_updated_at
     BEFORE UPDATE ON comments 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 DROP TRIGGER IF EXISTS update_user_profiles_updated_at$$
@@ -189,7 +189,7 @@ CREATE TRIGGER update_user_profiles_updated_at
     BEFORE UPDATE ON user_profiles 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 DROP TRIGGER IF EXISTS update_settings_updated_at$$
@@ -197,7 +197,7 @@ CREATE TRIGGER update_settings_updated_at
     BEFORE UPDATE ON settings 
     FOR EACH ROW 
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
+    SET NEW.updated_at = NOW();
 END$$
 
 DELIMITER ;
